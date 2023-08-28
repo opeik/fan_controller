@@ -701,57 +701,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embassy-rp-examples"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "byte-slice-cast 1.2.2",
- "cortex-m",
- "cortex-m-rt",
- "cyw43",
- "cyw43-pio",
- "defmt",
- "defmt-rtt",
- "display-interface",
- "display-interface-spi",
- "embassy-embedded-hal",
- "embassy-executor",
- "embassy-futures",
- "embassy-lora",
- "embassy-net",
- "embassy-net-wiznet",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embassy-usb",
- "embassy-usb-logger",
- "embedded-graphics",
- "embedded-hal 1.0.0-rc.1",
- "embedded-hal-async",
- "embedded-hal-bus",
- "embedded-io-async",
- "embedded-storage",
- "fixed",
- "fixed-macro",
- "futures",
- "heapless",
- "log",
- "lora-phy",
- "lorawan",
- "lorawan-device",
- "panic-probe",
- "pio",
- "pio-proc",
- "rand",
- "reqwest",
- "smart-leds",
- "st7789",
- "static_cell",
- "url",
- "usbd-hid",
-]
-
-[[package]]
 name = "embassy-sync"
 version = "0.2.0"
 source = "git+https://github.com/embassy-rs/embassy.git#88146eb53e40ea2ab43c2db77f3f62c6d08c9b36"
@@ -991,6 +940,57 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "fan-controller"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "byte-slice-cast 1.2.2",
+ "cortex-m",
+ "cortex-m-rt",
+ "cyw43",
+ "cyw43-pio",
+ "defmt",
+ "defmt-rtt",
+ "display-interface",
+ "display-interface-spi",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-lora",
+ "embassy-net",
+ "embassy-net-wiznet",
+ "embassy-rp",
+ "embassy-sync",
+ "embassy-time",
+ "embassy-usb",
+ "embassy-usb-logger",
+ "embedded-graphics",
+ "embedded-hal 1.0.0-rc.1",
+ "embedded-hal-async",
+ "embedded-hal-bus",
+ "embedded-io-async",
+ "embedded-storage",
+ "fixed",
+ "fixed-macro",
+ "futures",
+ "heapless",
+ "log",
+ "lora-phy",
+ "lorawan",
+ "lorawan-device",
+ "panic-probe",
+ "pio",
+ "pio-proc",
+ "rand",
+ "reqwest",
+ "smart-leds",
+ "st7789",
+ "static_cell",
+ "url",
+ "usbd-hid",
 ]
 
 [[package]]

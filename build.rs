@@ -16,8 +16,6 @@ use std::path::{Path, PathBuf};
 use url::Url;
 
 fn main() -> Result<()> {
-    download_firmware()?;
-
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -38,11 +36,13 @@ fn main() -> Result<()> {
     println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
 
+    download_firmware()?;
+
     Ok(())
 }
 
 fn download_firmware() -> Result<()> {
-    let base_url = Url::parse("https://github.com/embassy-rs/embassy/raw/main/cyw43-firmware")?;
+    let base_url = Url::parse("https://github.com/embassy-rs/embassy/raw/main/cyw43-firmware/")?;
     let base_path = Path::new(&std::env::var("OUT_DIR")?).to_path_buf();
     download_file(base_url.join("43439A0.bin")?, &base_path)?;
     download_file(base_url.join("43439A0_clm.bin")?, &base_path)?;
