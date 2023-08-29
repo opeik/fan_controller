@@ -8,14 +8,12 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
-use anyhow::{Context, Result};
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use url::Url;
+use std::path::PathBuf;
 
-fn main() -> Result<()> {
+fn main() {
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -31,32 +29,8 @@ fn main() -> Result<()> {
     // `memory.x` is changed.
     println!("cargo:rerun-if-changed=memory.x");
 
-    println!("cargo:rustc-link-arg-tests=--nmagic");
-    println!("cargo:rustc-link-arg-tests=-Tlink.x");
-    println!("cargo:rustc-link-arg-tests=-Tlink-rp.x");
-    println!("cargo:rustc-link-arg-tests=-Tdefmt.x");
-
-    download_firmware()?;
-
-    Ok(())
-}
-
-fn download_firmware() -> Result<()> {
-    let base_url = Url::parse("https://github.com/embassy-rs/embassy/raw/main/cyw43-firmware/")?;
-    let base_path = Path::new(&std::env::var("OUT_DIR")?).to_path_buf();
-    download_file(base_url.join("43439A0.bin")?, &base_path)?;
-    download_file(base_url.join("43439A0_clm.bin")?, &base_path)?;
-    Ok(())
-}
-
-fn download_file<P: AsRef<Path>>(url: Url, parent: P) -> Result<()> {
-    let contents = reqwest::blocking::get(url.clone())?.bytes()?;
-    let filename = url
-        .path_segments()
-        .context("missing url")?
-        .last()
-        .context("missing filename")?;
-    let mut file = File::create(parent.as_ref().join(filename))?;
-    file.write_all(&contents)?;
-    Ok(())
+    println!("cargo:rustc-link-arg-bins=--nmagic");
+    println!("cargo:rustc-link-arg-bins=-Tlink.x");
+    println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
+    println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
 }
