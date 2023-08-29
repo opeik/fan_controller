@@ -10,7 +10,7 @@ use embassy_rp::{
     pwm::{Channel, Config as PwmConfig, Pwm},
 };
 use embassy_time::{Duration, Timer};
-use fan_controller::{FanSpeed, PwmParams};
+use fan_controller::FanSpeed;
 use uom::si::{f32::*, frequency::hertz, ratio::percent};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -45,12 +45,12 @@ async fn main(_spawner: Spawner) {
 }
 
 fn set_fan_speed<T: Channel>(pwm: &mut Pwm<T>, fan_speed: FanSpeed) {
-    let pwm_params = fan_speed.to_pwm_params(Frequency::new::<hertz>(125_000_000.0));
+    let params = fan_speed.to_pwm_params(Frequency::new::<hertz>(125_000_000.0));
 
     let mut config = PwmConfig::default();
-    config.top = pwm_params.top;
-    config.compare_a = pwm_params.compare;
-    config.compare_b = pwm_params.compare;
+    config.top = params.top;
+    config.compare_a = params.compare;
+    config.compare_b = params.compare;
 
     pwm.set_config(&config)
 }
