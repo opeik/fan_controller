@@ -24,17 +24,20 @@
             self.formatter.${system}
           ];
 
-          rust = with pkgs; [
-            (rust-bin.selectLatestNightlyWith (toolchain:
-              toolchain.default.override {
-                extensions = ["rust-src"];
-                targets = ["thumbv6m-none-eabi"];
-              }))
-            flip-link
-            probe-run
-            probe-rs
-            elf2uf2-rs
-          ];
+          rust = with pkgs;
+            [
+              (rust-bin.selectLatestNightlyWith (toolchain:
+                toolchain.default.override {
+                  extensions = ["rust-src"];
+                  targets = ["thumbv6m-none-eabi"];
+                }))
+              flip-link
+              probe-run
+              probe-rs
+              elf2uf2-rs
+            ]
+            ++ lib.optionals stdenv.isDarwin
+            (with darwin.apple_sdk.frameworks; [Security]);
         };
       in {
         # Nix code formatter: `nix fmt`

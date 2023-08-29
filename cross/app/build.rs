@@ -31,10 +31,10 @@ fn main() -> Result<()> {
     // `memory.x` is changed.
     println!("cargo:rerun-if-changed=memory.x");
 
-    println!("cargo:rustc-link-arg-bins=--nmagic");
-    println!("cargo:rustc-link-arg-bins=-Tlink.x");
-    println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
-    println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+    println!("cargo:rustc-link-arg-tests=--nmagic");
+    println!("cargo:rustc-link-arg-tests=-Tlink.x");
+    println!("cargo:rustc-link-arg-tests=-Tlink-rp.x");
+    println!("cargo:rustc-link-arg-tests=-Tdefmt.x");
 
     download_firmware()?;
 
