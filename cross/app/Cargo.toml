@@ -5,6 +5,15 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+fan_controller = { path = "../../host" }
+uom = { version = "0.35", default-features = false, features = [
+    "autoconvert",
+    "f32",
+    "f64",
+    "si",
+] }
+
+# Embassy-related dependencies.
 embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", features = [
     "defmt",
 ] }

@@ -6,6 +6,7 @@ fn main() -> Result<(), anyhow::Error> {
     let args = args.iter().map(|s| &**s).collect::<Vec<_>>();
 
     match &args[..] {
+        ["run"] => run(),
         ["test", "all"] => test_all(),
         ["test", "host"] => test_host(),
         ["test", "target"] => test_target(),
@@ -14,6 +15,12 @@ fn main() -> Result<(), anyhow::Error> {
             Ok(())
         }
     }
+}
+
+fn run() -> Result<(), anyhow::Error> {
+    let _p = xshell::pushd(root_dir().join("cross"))?;
+    cmd!("cargo run --release").run()?;
+    Ok(())
 }
 
 fn test_all() -> Result<(), anyhow::Error> {

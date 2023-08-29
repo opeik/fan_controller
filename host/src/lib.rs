@@ -1,45 +1,68 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(error_in_core)]
 
-use onlyerror::Error;
+use derive_more::Constructor;
+use uom::si::{f32::*, frequency::hertz};
 
 /// Fan speed, represented as a percentage ranging `0..=100`.
-pub struct FanSpeed(f64);
+#[derive(Constructor)]
+pub struct FanSpeed(Ratio);
 
-#[derive(Debug, Error)]
-pub enum FanError {
-    #[error("invalid fan speed `{0}`, expected 0..=1")]
-    InvalidFanSpeed(f64),
+/// Represents RP2040 PWM parameters.
+#[derive(Debug, PartialEq)]
+pub struct PwmParams {
+    pub top: u16,
+    pub compare: u16,
 }
 
 impl FanSpeed {
-    /// Creates a new `FanSpeed`.
-    pub fn new(fan_speed: f64) -> core::result::Result<FanSpeed, FanError> {
-        if !(0.0..=1.0).contains(&fan_speed) {
-            return Err(FanError::InvalidFanSpeed(fan_speed));
-        }
+    pub fn to_pwm_params(&self, clock: Frequency) -> PwmParams {
+        // As specified by Intel "4-Wire Pulse Width Modulation (PWM) Controlled Fans".
+        let fan_pwm_signal = Frequency::new::<hertz>(25_000.0);
 
-        Ok(FanSpeed(fan_speed))
+        let fan_speed = self.0;
+        let top = clock / fan_pwm_signal;
+        let compare = top * fan_speed;
+        PwmParams {
+            top: top.value as u16,
+            compare: compare.value as u16,
+        }
     }
 }
 
-// impl From<FanSpeed> for PwmConfig {
-//     fn from(value: FanSpeed) -> Self {
-//         const FAN_PWM_HZ: f64 = 25_000.0;
-//         let clock_hz = embassy_rp::clocks::clk_sys_freq() as f64;
-
-//         let mut pwm_config = PwmConfig::default();
-//         pwm_config.top = (clock_hz / FAN_PWM_HZ) as u16;
-//         pwm_config.compare_a = ((pwm_config.top as f64) * value.0) as u16;
-//         pwm_config.compare_b = pwm_config.compare_a;
-
-//         pwm_config
-//     }
-// }
-
+#[cfg(test)]
 mod tests {
+    use uom::si::ratio::percent;
+
+    use super::*;
+
     #[test]
-    fn test_add() {
-        assert_eq!(1, 1);
+    fn to_pwm_params() {
+        assert_eq!(
+            FanSpeed::new(Ratio::new::<percent>(0.0))
+                .to_pwm_params(Frequency::new::<hertz>(125_000_000.0)),
+            PwmParams {
+                top: 5000,
+                compare: 0,
+            }
+        );
+
+        assert_eq!(
+            FanSpeed::new(Ratio::new::<percent>(50.0))
+                .to_pwm_params(Frequency::new::<hertz>(125_000_000.0)),
+            PwmParams {
+                top: 5000,
+                compare: 2500,
+            }
+        );
+
+        assert_eq!(
+            FanSpeed::new(Ratio::new::<percent>(100.0))
+                .to_pwm_params(Frequency::new::<hertz>(125_000_000.0)),
+            PwmParams {
+                top: 5000,
+                compare: 5000,
+            }
+        );
     }
 }
