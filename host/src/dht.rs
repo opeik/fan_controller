@@ -48,7 +48,7 @@ where
 }
 
 /// Represents the current sensor state.
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct State {
     /// Current temperature.
     pub temperature: ThermodynamicTemperature,
@@ -83,15 +83,12 @@ where
     ///
     /// [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
     pub async fn read(&mut self) -> Result<State, HalError> {
-        debug!("waking dht sensor...");
+        debug!("waking dht11...");
         self.wake().await?;
-        debug!("attemping to connect to dht sensor...");
+        debug!("connecting to dht11...");
         self.connect().await?;
-
-        Ok(State {
-            temperature: ThermodynamicTemperature::new::<degree_celsius>(0.0),
-            humidity: Ratio::new::<percent>(0.0),
-        })
+        debug!("reading dht11 state...");
+        Ok(self.read_state().await?)
     }
 
     /// Wakes the sensor up.
@@ -112,13 +109,15 @@ where
         const CRINGE_FACTOR: f32 = 2.5;
 
         // See: datasheet § 5.2-3.
-        self.wait_for_pin_state(
-            PinState::High,
-            Time::new::<nanosecond>(80.0 * CRINGE_FACTOR),
-        )
-        .await?;
+        let timeout = Time::new::<nanosecond>(80.0 * CRINGE_FACTOR);
+        self.wait_for_pin_state(PinState::Low, timeout).await?;
+        self.wait_for_pin_state(PinState::High, timeout).await?;
 
         Ok(())
+    }
+
+    async fn read_state(&mut self) -> Result<State, HalError> {
+        Ok(State::default())
     }
 
     async fn wait_for_pin_state(
