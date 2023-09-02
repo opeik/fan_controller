@@ -4,15 +4,21 @@
 #![feature(error_in_core)]
 
 use defmt::info;
+use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    gpio::{Level, Output},
+    gpio::{Level, Output, OutputOpenDrain},
     pwm::{Channel, Config as PwmConfig, Pwm},
 };
-use embassy_time::{Duration, Timer};
-use fan_controller::FanSpeed;
-use uom::si::{f32::*, frequency::hertz, ratio::percent};
-use {defmt_rtt as _, panic_probe as _};
+use embassy_time::{Delay, Duration, Timer};
+use embedded_hal_async::digital::Wait;
+use fan_controller::{dht::Dht11, fan::FanSpeed};
+use panic_probe as _;
+use uom::si::{
+    f32::{Frequency, Ratio},
+    frequency::hertz,
+    ratio::percent,
+};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -20,27 +26,26 @@ async fn main(_spawner: Spawner) {
     let mut led = Output::new(peripherals.PIN_25, Level::Low);
     info!("peripherals initialized!");
 
-    let mut pwm = Pwm::new_output_a(
-        peripherals.PWM_CH2,
-        peripherals.PIN_20,
+    let mut pwm = Pwm::new_output_b(
+        peripherals.PWM_CH7,
+        peripherals.PIN_15,
         PwmConfig::default(),
     );
+    set_fan_speed(&mut pwm, FanSpeed(Ratio::new::<percent>(0.0)));
     info!("pwm initialized!");
 
-    let mut is_led_on = false;
-    let mut fan_speed = 0.0f32;
-    loop {
-        fan_speed = (fan_speed + 10.0) % 100.0;
-        set_fan_speed(&mut pwm, FanSpeed::new(Ratio::new::<percent>(fan_speed)));
+    let dht_pin = OutputOpenDrain::new(peripherals.PIN_16, Level::High);
+    let dht = Dht11::new(dht_pin, Delay);
 
+    let mut is_led_on = false;
+    loop {
         is_led_on = !is_led_on;
         match is_led_on {
             true => led.set_high(),
             false => led.set_low(),
         }
 
-        info!("fan speed: {}", fan_speed);
-        Timer::after(Duration::from_millis(2000)).await;
+        Timer::after(Duration::from_secs(1)).await;
     }
 }
 

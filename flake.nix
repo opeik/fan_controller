@@ -26,11 +26,7 @@
 
           rust = with pkgs;
             [
-              (rust-bin.selectLatestNightlyWith (toolchain:
-                toolchain.default.override {
-                  extensions = ["rust-src"];
-                  targets = ["thumbv6m-none-eabi"];
-                }))
+              (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
               flip-link
               probe-run
               probe-rs

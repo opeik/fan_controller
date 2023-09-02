@@ -7,10 +7,13 @@ edition = "2021"
 
 [dependencies]
 derive_more = "0.99"
-onlyerror = { version = "0.1", default-features = false }
+thiserror = { version = "1.0", package = "thiserror-core", default-features = false }
 uom = { version = "0.35", default-features = false, features = [
     "autoconvert",
     "f32",
     "f64",
     "si",
 ] }
+embedded-hal = "=1.0.0-rc.1"
+embedded-hal-async = "1.0.0-rc.1"
+futures = { version = "0.3", default-features = false }
