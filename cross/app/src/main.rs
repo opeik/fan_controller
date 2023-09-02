@@ -1,17 +1,20 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait)]
 #![feature(error_in_core)]
+#![feature(impl_trait_projections)]
+
+mod pin;
 
 use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    gpio::{Level, Output, OutputOpenDrain},
+    gpio::{Flex, Level, Output, OutputOpenDrain},
     pwm::{Channel, Config as PwmConfig, Pwm},
 };
 use embassy_time::{Delay, Duration, Timer};
-use embedded_hal_async::digital::Wait;
 use fan_controller::{dht::Dht11, fan::FanSpeed};
 use panic_probe as _;
 use uom::si::{
@@ -19,6 +22,8 @@ use uom::si::{
     frequency::hertz,
     ratio::percent,
 };
+
+use crate::pin::InputOutputPin;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -31,18 +36,23 @@ async fn main(_spawner: Spawner) {
         peripherals.PIN_15,
         PwmConfig::default(),
     );
+
     set_fan_speed(&mut pwm, FanSpeed(Ratio::new::<percent>(0.0)));
     info!("pwm initialized!");
 
-    let dht_pin = OutputOpenDrain::new(peripherals.PIN_16, Level::High);
-    let dht = Dht11::new(dht_pin, Delay);
+    let mut temp_sensor = Dht11::new(
+        InputOutputPin {
+            pin: Flex::new(peripherals.PIN_16),
+        },
+        Delay,
+    );
 
-    let mut is_led_on = false;
     loop {
-        is_led_on = !is_led_on;
-        match is_led_on {
-            true => led.set_high(),
-            false => led.set_low(),
+        led.toggle();
+
+        match temp_sensor.read().await {
+            Ok(v) => info!("{:?}", v),
+            Err(e) => info!("failed to read dht sensor: {:?}", e),
         }
 
         Timer::after(Duration::from_secs(1)).await;

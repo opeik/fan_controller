@@ -3,5 +3,8 @@
         // Order matters, see: https://github.com/rust-lang/rust-analyzer/issues/7764
         "Cargo.toml",
         "cross/Cargo.toml",
+    ],
+    "cSpell.words": [
+        "defmt"
     ]
 }

@@ -1,15 +1,35 @@
-use embedded_hal::digital::{InputPin, OutputPin};
+use defmt::debug;
+use embedded_hal::digital::{InputPin, OutputPin, PinState};
 use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
 use futures::{
     future::{self, Either},
     pin_mut,
 };
-use uom::si::f32::{Ratio, ThermodynamicTemperature};
+use uom::si::{
+    f32::{Ratio, ThermodynamicTemperature, Time},
+    ratio::percent,
+    thermodynamic_temperature::degree_celsius,
+    time::nanosecond,
+};
+
+macro_rules! select_timeout {
+    ($future:expr, $timeout:expr) => {{
+        let future = $future;
+        let timeout = $timeout;
+        pin_mut!(future);
+        pin_mut!(timeout);
+
+        match future::select(future, timeout).await {
+            Either::Left((v, _)) => Some(v),
+            Either::Right((_, _)) => None,
+        }
+    }};
+}
 
 type Result<T, E> = core::result::Result<T, Error<E>>;
 
 /// Represents a sensor error.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, defmt::Format)]
 pub enum Error<HalError> {
     /// The connection was refused by the DHT sensor.
     #[error("failed to connect to the DHT sensor")]
@@ -28,11 +48,23 @@ where
 }
 
 /// Represents the current sensor state.
+#[derive(Debug)]
 pub struct State {
     /// Current temperature.
     pub temperature: ThermodynamicTemperature,
     /// Current humidity.
     pub humidity: Ratio,
+}
+
+impl defmt::Format for State {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(
+            f,
+            "State {{ temperature: {}°C, humidity: {}% }}",
+            self.temperature.get::<degree_celsius>(),
+            self.humidity.value * 100.0,
+        )
+    }
 }
 
 impl<Pin, Delay, HalError> Dht11<Pin, Delay, HalError>
@@ -51,35 +83,54 @@ where
     ///
     /// [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
     pub async fn read(&mut self) -> Result<State, HalError> {
+        debug!("waking dht sensor...");
         self.wake().await?;
+        debug!("attemping to connect to dht sensor...");
         self.connect().await?;
 
-        todo!()
+        Ok(State {
+            temperature: ThermodynamicTemperature::new::<degree_celsius>(0.0),
+            humidity: Ratio::new::<percent>(0.0),
+        })
     }
 
     /// Wakes the sensor up.
     async fn wake(&mut self) -> Result<(), HalError> {
-        // See: datasheet § 5.2.
+        // See: Datasheet § 5.2.
         self.pin.set_low()?;
         self.delay.delay_ms(18).await;
         self.pin.set_high()?;
         self.delay.delay_us(40).await;
+
         Ok(())
     }
 
     /// Opens a connection to the sensor.
     async fn connect(&mut self) -> Result<(), HalError> {
-        // See: datasheet § 5.2-3.
-        let falling_edge = self.pin.wait_for_falling_edge();
-        let timeout = self.delay.delay_us(80);
-        pin_mut!(falling_edge);
-        pin_mut!(timeout);
+        // The datasheet claims pin is pulled low for 80μ. In my testing it never
+        // hit that deadline.
+        const CRINGE_FACTOR: f32 = 2.5;
 
-        match future::select(falling_edge, timeout).await {
-            Either::Left((_, _)) => {}
-            Either::Right((_, _)) => return Err(Error::<HalError>::ConnectionRefused),
-        };
+        // See: datasheet § 5.2-3.
+        self.wait_for_pin_state(
+            PinState::High,
+            Time::new::<nanosecond>(80.0 * CRINGE_FACTOR),
+        )
+        .await?;
 
         Ok(())
+    }
+
+    async fn wait_for_pin_state(
+        &mut self,
+        pin_state: PinState,
+        timeout: Time,
+    ) -> Result<Option<()>, HalError> {
+        let timeout = self.delay.delay_us(timeout.get::<nanosecond>() as u32);
+        let result = match pin_state {
+            PinState::Low => select_timeout!(self.pin.wait_for_falling_edge(), timeout),
+            PinState::High => select_timeout!(self.pin.wait_for_rising_edge(), timeout),
+        };
+        Ok(result.transpose()?)
     }
 }

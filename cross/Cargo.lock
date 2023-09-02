@@ -614,7 +614,9 @@ dependencies = [
 name = "fan_controller"
 version = "0.1.0"
 dependencies = [
+ "defmt",
  "derive_more",
+ "either",
  "embedded-hal 1.0.0-rc.1",
  "embedded-hal-async",
  "futures",
