@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "app",
+            "preLaunchTask": "${defaultBuildTask}",
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            // "speed": 24000,
+            "runtimeExecutable": "probe-rs",
+            "runtimeArgs": [ "dap-server" ],
+            "chip": "RP2040",
+            "flashingConfig": {
+                "flashingEnabled": true,
+                "haltAfterReset": false,
+                "formatOptions": {
+                    "format": "elf"
+                }
+            },
+            "coreConfigs": [
+                {
+                    "coreIndex": 0,
+                    "rttEnabled": true,
+                    "programBinary": "${workspaceRoot}/cross/target/thumbv6m-none-eabi/release/app",
+                    "svdFile": "${workspaceRoot}/cross/target/thumbv6m-none-eabi/release/rp2040.svd"
+                }
+            ],
+            "consoleLogLevel": "Console"
+        }
+    ]
+}
