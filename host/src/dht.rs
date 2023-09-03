@@ -1,14 +1,7 @@
-use core::ops::Deref;
-
 use bitvec::{array::BitArray, prelude::*, BitArr};
-use defmt::{debug, info, trace};
-use embassy_time::Instant;
+use defmt::{debug, trace};
 use embedded_hal::digital::{InputPin, OutputPin, PinState};
 use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
-use futures::{
-    future::{self, Either},
-    pin_mut,
-};
 use uom::si::{
     f32::{Ratio, ThermodynamicTemperature, Time},
     ratio::{percent, ratio},
@@ -16,21 +9,7 @@ use uom::si::{
     time::microsecond,
 };
 
-use crate::future::{TimedExt, TimedFuture};
-
-macro_rules! select {
-    ($future:expr, $timeout:expr) => {{
-        let future = $future;
-        let timeout = $timeout;
-        pin_mut!(future);
-        pin_mut!(timeout);
-
-        match future::select(future, timeout).await {
-            Either::Left((v, _)) => Some(v),
-            Either::Right((_, _)) => None,
-        }
-    }};
-}
+use crate::future::{select, timed, TimedExt};
 
 type Result<T, E> = core::result::Result<T, Error<E>>;
 
@@ -104,7 +83,7 @@ where
         debug!("connecting to dht11...");
         self.connect().await?;
         debug!("reading dht11 state...");
-        Ok(self.read_state().await?)
+        self.read_state().await
     }
 
     /// Wakes the sensor up.
@@ -122,7 +101,6 @@ where
         // See: datasheet § 5.2-3; figure 3.
         let tolerance = Ratio::new::<ratio>(1.5);
         let timeout = Time::new::<microsecond>(80.0) * tolerance;
-
         self.wait_for(PinState::Low, timeout).await?;
         self.wait_for(PinState::High, timeout).await?;
         Ok(())
@@ -135,37 +113,24 @@ where
             bits.set(bit, self.read_bit().await?);
         }
 
-        let expected_checksum = bits[32..].load::<u8>();
-        let actual_checksum = (bits[..32].iter().fold(0u16, |acc, x| acc + *x as u16) & 0xff) as u8;
-        if expected_checksum != actual_checksum {
-            return Err(Error::ChecksumMismatch {
-                expected: expected_checksum,
-                actual: actual_checksum,
-            });
-        }
-
-        Ok(self.parse_state(bits.as_bitslice())?)
+        self.parse_state(bits.as_bitslice())
     }
 
     async fn read_bit(&mut self) -> Result<bool, HalError> {
         // See: datasheet § 5.3; figure 4.
-        let tolerance = Ratio::new::<ratio>(1.5);
+        let tolerance = Ratio::new::<ratio>(1.2);
 
-        // Wait for start of transmission.
         trace!("waiting for start of transmission...");
         self.wait_for(PinState::Low, Time::new::<microsecond>(50.0) * tolerance)
             .await?;
 
         trace!("reading state bit...");
-        let result = self
-            .wait_for(PinState::High, Time::new::<microsecond>(70.0) * tolerance)
-            .timed()
-            .await;
-        let bit_duration = result.duration();
-        result.inner()?;
+        let (result, high_duration) =
+            timed!(self.wait_for(PinState::High, Time::new::<microsecond>(70.0) * tolerance));
+        result?;
 
         // A high level of 26-28μ indicates a `0` bit, 70μ indicates a `1` bit.
-        if bit_duration.as_micros() < 30 {
+        if high_duration.as_micros() < (Time::new::<microsecond>(28.0) * tolerance).value as u64 {
             Ok(false)
         } else {
             Ok(true)
@@ -173,6 +138,16 @@ where
     }
 
     fn parse_state(&self, bits: &BitSlice<u8>) -> Result<State, HalError> {
+        let expected_checksum = bits[32..].load::<u8>();
+        let actual_checksum = (bits[..32].iter().fold(0u16, |acc, x| acc + *x as u16) & 0xff) as u8;
+
+        if expected_checksum != actual_checksum {
+            return Err(Error::ChecksumMismatch {
+                expected: expected_checksum,
+                actual: actual_checksum,
+            });
+        }
+
         let humidity = bits[0..8].load::<u8>() as f32;
         let temperature = bits[16..24].load::<u8>() as f32;
 
