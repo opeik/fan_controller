@@ -1759,6 +1759,7 @@ dependencies = [
 name = "self_tests"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "cortex-m",
  "defmt",
  "defmt-rtt",
@@ -1778,7 +1779,9 @@ dependencies = [
  "log",
  "panic-probe",
  "pio",
+ "reqwest",
  "static_cell",
+ "url",
 ]
 
 [[package]]

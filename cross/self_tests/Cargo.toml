@@ -60,6 +60,11 @@ static_cell = { version = "1.1", features = ["nightly"] }
 log = "0.4"
 pio = "0.2.1"
 
+[build-dependencies]
+anyhow = "1.0"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+url = "2.4"
+
 [features]
 default = ['defmt-trace']
 # these features are required by defmt

@@ -9,7 +9,7 @@ use uom::si::{
     time::microsecond,
 };
 
-use crate::future::{select, timed, TimedExt};
+use crate::future::{timed, timeout, TimedExt};
 
 type Result<T, E> = core::result::Result<T, Error<E>>;
 
@@ -49,6 +49,15 @@ pub struct State {
     pub temperature: ThermodynamicTemperature,
     /// Current humidity.
     pub humidity: Ratio,
+}
+
+/// Represents the current sensor state.
+#[derive(Default, Debug)]
+pub struct RawState {
+    /// Current temperature.
+    pub temperature: i8,
+    /// Current humidity.
+    pub humidity: u8,
 }
 
 impl defmt::Format for State {
@@ -106,16 +115,47 @@ where
         Ok(())
     }
 
+    /// Reads the state of the sensor.
     async fn read_state(&mut self) -> Result<State, HalError> {
+        // The DHT11 sends payloads in two's compliment, most significant bit first. A payload
+        // is formatted as follows:
+        //
+        //          0                   1
+        //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+        // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        // |  Humidity int |  Humidity dec |
+        // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        // |Temperature int|Temperature dec|
+        // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        // |    Checksum   |
+        // +-+-+-+-+-+-+-+-+
+        //
+        // where:
+        // - Humidity (integral)
+        //     - 8 bits
+        //     - The integral component of the relative humidity
+        // - Humidity (decimal)
+        //     - 8 bits
+        //     - The decimal component of the relative humidity
+        // - Temperature (integral)
+        //     - 8 bits
+        //     - The integral component of the temperature
+        // - Temperature (decimal)
+        //     - 8 bits
+        //     - The decimal component of the temperature
+        // - Checksum
+        //     - 8 bits
+        //     - Should match the sum of all other bytes
         let mut bits: BitArr!(for 40, in u8) = BitArray::ZERO;
         for bit in 0..40 {
             trace!("reading state bit {}", bit);
             bits.set(bit, self.read_bit().await?);
         }
 
-        self.parse_state(bits.as_bitslice())
+        parse_state::<HalError>(bits.as_bitslice())
     }
 
+    /// Reads a bit of state from the sensor.
     async fn read_bit(&mut self) -> Result<bool, HalError> {
         // See: datasheet § 5.3; figure 4.
         let tolerance = Ratio::new::<ratio>(1.2);
@@ -137,41 +177,64 @@ where
         }
     }
 
-    fn parse_state(&self, bits: &BitSlice<u8>) -> Result<State, HalError> {
-        let expected_checksum = bits[32..].load::<u8>();
-        let actual_checksum = (bits[..32].iter().fold(0u16, |acc, x| acc + *x as u16) & 0xff) as u8;
-
-        if expected_checksum != actual_checksum {
-            return Err(Error::ChecksumMismatch {
-                expected: expected_checksum,
-                actual: actual_checksum,
-            });
-        }
-
-        let humidity = bits[0..8].load::<u8>() as f32;
-        let temperature = bits[16..24].load::<u8>() as f32;
-
-        if !(0.0..=100.0).contains(&humidity) {
-            return Err(Error::InvalidHumidity(humidity));
-        }
-
-        if !(0.0..=50.0).contains(&temperature) {
-            return Err(Error::InvalidTemperature(temperature));
-        }
-
-        Ok(State {
-            temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature),
-            humidity: Ratio::new::<percent>(humidity),
-        })
-    }
-
-    /// Waits for a pin state until the timeout. If the pin state is already
+    /// Waits for a pin state until the timeout.
     async fn wait_for(&mut self, state: PinState, timeout: Time) -> Result<(), HalError> {
         let timeout = self.delay.delay_us(timeout.get::<microsecond>() as u32);
         match state {
-            PinState::Low => select!(self.pin.wait_for_low(), timeout).transpose()?,
-            PinState::High => select!(self.pin.wait_for_high(), timeout).transpose()?,
+            PinState::Low => timeout!(self.pin.wait_for_low(), timeout).transpose()?,
+            PinState::High => timeout!(self.pin.wait_for_high(), timeout).transpose()?,
         };
         Ok(())
     }
+}
+
+fn parse_state<HalError>(bits: &BitSlice<u8>) -> Result<State, HalError> {
+    let expected_checksum = bits[32..].load::<u8>();
+    let actual_checksum = (bits[..32].iter().fold(0u16, |acc, x| acc + *x as u16) & 0xff) as u8;
+
+    if expected_checksum != actual_checksum {
+        return Err(Error::ChecksumMismatch {
+            expected: expected_checksum,
+            actual: actual_checksum,
+        });
+    }
+
+    let humidity = bits[0..8].load::<u8>() as f32;
+    let temperature = bits[16..24].load::<u8>() as f32;
+
+    if !(0.0..=100.0).contains(&humidity) {
+        return Err(Error::InvalidHumidity(humidity));
+    }
+
+    if !(0.0..=50.0).contains(&temperature) {
+        return Err(Error::InvalidTemperature(temperature));
+    }
+
+    Ok(State {
+        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature),
+        humidity: Ratio::new::<percent>(humidity),
+    })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // #[test]
+    // fn test_raw_to_reading() {
+    //     assert_eq!(
+    //         parse_state([0x32, 0, 0x1B, 0]),
+    //         Reading {
+    //             temperature: 27,
+    //             relative_humidity: 50
+    //         }
+    //     );
+    //     assert_eq!(
+    //         parse_state([0x80, 0, 0x83, 0]),
+    //         Reading {
+    //             temperature: -3,
+    //             relative_humidity: 128
+    //         }
+    //     );
+    // }
 }
