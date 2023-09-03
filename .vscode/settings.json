@@ -5,6 +5,7 @@
         "cross/Cargo.toml",
     ],
     "cSpell.words": [
-        "defmt"
+        "defmt",
+        "pico"
     ]
 }

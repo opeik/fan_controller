@@ -8,19 +8,27 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
-use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{
+    env,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
-fn main() {
+use anyhow::{Context, Result};
+use url::Url;
+
+fn main() -> Result<()> {
+    // Download the chips SVD file for `probe-rs` debugging.
+    download_svd_file()?;
+
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     File::create(out.join("memory.x"))
-        .unwrap()
+        .context("failed to create `memory.x` file")?
         .write_all(include_bytes!("memory.x"))
-        .unwrap();
+        .context("failed to write `memory.x` file")?;
     println!("cargo:rustc-link-search={}", out.display());
 
     // By default, Cargo will re-run a build script whenever
@@ -32,4 +40,38 @@ fn main() {
     println!("cargo:rustc-link-arg=-Tlink.x");
     println!("cargo:rustc-link-arg=-Tlink-rp.x");
     println!("cargo:rustc-link-arg=-Tdefmt.x");
+    Ok(())
+}
+
+fn download_svd_file() -> Result<()> {
+    let url = Url::parse(
+        "https://github.com/raspberrypi/pico-sdk/raw/master/src/rp2040/hardware_regs/rp2040.svd",
+    )?;
+    let path = Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .to_path_buf()
+        .parent()
+        .context("missing parent")?
+        .join("target/thumbv6m-none-eabi/release");
+    download_file(url, path)?;
+    Ok(())
+}
+
+// fn download_pico_w_firmware() -> Result<()> {
+//     let base_url = Url::parse("https://github.com/embassy-rs/embassy/raw/main/cyw43-firmware/")?;
+//     let path = Path::new(&std::env::var("OUT_DIR")?).to_path_buf();
+//     download_file(base_url.join("43439A0.bin")?, &path)?;
+//     download_file(base_url.join("43439A0_clm.bin")?, &path)?;
+//     Ok(())
+// }
+
+fn download_file<P: AsRef<Path>>(url: Url, parent: P) -> Result<()> {
+    let contents = reqwest::blocking::get(url.clone())?.bytes()?;
+    let filename = url
+        .path_segments()
+        .context("missing url")?
+        .last()
+        .context("missing filename")?;
+    let mut file = File::create(parent.as_ref().join(filename)).context("failed to create file")?;
+    file.write_all(&contents)?;
+    Ok(())
 }
