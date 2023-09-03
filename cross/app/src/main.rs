@@ -5,7 +5,6 @@
 #![feature(error_in_core)]
 #![feature(impl_trait_projections)]
 
-use cortex_m::peripheral;
 use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
@@ -14,7 +13,6 @@ use embassy_rp::{
     pwm::{Channel, Config as PwmConfig, Pwm},
 };
 use embassy_time::{Delay, Duration, Timer};
-use embedded_hal::digital::OutputPin;
 use fan_controller::{dht::Dht11, fan::FanSpeed};
 use panic_probe as _;
 use uom::si::{

@@ -170,6 +170,7 @@ dependencies = [
 name = "fan_controller"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bitvec",
  "defmt",
  "derive_more",

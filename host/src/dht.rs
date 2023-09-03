@@ -1,6 +1,5 @@
-use bitvec::{prelude::Msb0, BitArr};
+use bitvec::prelude::*;
 use defmt::debug;
-use embassy_time::Instant;
 use embedded_hal::digital::{InputPin, OutputPin, PinState};
 use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
 use uom::si::{
@@ -14,7 +13,7 @@ use crate::future::{timed, timeout};
 type Result<T, E> = core::result::Result<T, Error<E>>;
 
 /// Represents a sensor error.
-#[derive(Debug, thiserror::Error, defmt::Format)]
+#[derive(Debug, PartialEq, thiserror::Error, defmt::Format)]
 pub enum Error<HalError> {
     /// The sensor is not present.
     #[error("sensor not present")]
@@ -23,7 +22,11 @@ pub enum Error<HalError> {
     #[error("read timed out")]
     Timeout,
     /// The state checksum is mismatched.
-    #[error("checksum mismatched (expected {expected}, found {actual})")]
+    #[error(
+        "checksum mismatched (expected {:#0x}, found {:#0x})",
+        expected,
+        actual
+    )]
     ChecksumMismatch { expected: u8, actual: u8 },
     #[error("invalid temperature, (expected 0≤x≤50°C, got {0}°C)")]
     InvalidTemperature(f32),
@@ -33,6 +36,11 @@ pub enum Error<HalError> {
     HardwareError(#[from] HalError),
 }
 
+/// Represents a DHT11 sensor.
+///
+/// See: [the datasheet].
+///
+/// [the datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 pub struct Dht11<Pin, DebugPin, Delay, HalError>
 where
     Pin: InputPin<Error = HalError> + OutputPin<Error = HalError> + Wait,
@@ -46,20 +54,18 @@ where
 
 /// Represents the current sensor state.
 #[derive(Default, Debug, PartialEq)]
-pub struct State {
-    /// Current temperature.
-    pub temperature: ThermodynamicTemperature,
+pub struct Data {
     /// Current humidity.
     pub humidity: Ratio,
+    /// Current temperature.
+    pub temperature: ThermodynamicTemperature,
 }
 
-type RawState = BitArr!(for 5 * 8, in u32, Msb0);
-
-impl defmt::Format for State {
+impl defmt::Format for Data {
     fn format(&self, f: defmt::Formatter) {
         defmt::write!(
             f,
-            "State {{ temperature: {}°C, humidity: {}% }}",
+            "Data {{ temperature: {}°C, humidity: {}% }}",
             self.temperature.get::<degree_celsius>(),
             self.humidity.get::<percent>(),
         )
@@ -82,17 +88,15 @@ where
     }
 
     /// Reads the current state of the sensor.
-    ///
-    /// See: the [datasheet].
-    ///
-    /// [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
-    pub async fn read(&mut self) -> Result<State, HalError> {
+    pub async fn read(&mut self) -> Result<Data, HalError> {
         debug!("waking dht11...");
         self.wake().await?;
+
         debug!("connecting to dht11...");
         self.connect().await?;
-        debug!("reading dht11 state...");
-        self.read_state().await
+
+        debug!("reading state from dht11...");
+        self.read_data().await
     }
 
     /// Wakes the sensor up.
@@ -117,35 +121,12 @@ where
     }
 
     /// Reads the state of the sensor.
-    async fn read_state(&mut self) -> Result<State, HalError> {
-        let bytes = self.read_state_raw().await?;
-
-        for byte in bytes {
-            debug!("read byte: {:08b}", byte);
+    async fn read_data(&mut self) -> Result<Data, HalError> {
+        let mut state = bitarr![u8, Msb0; 0; 40];
+        for mut bit in state.iter_mut() {
+            *bit = self.read_bit().await?;
         }
-
-        parse_state::<HalError>(&bytes)
-    }
-
-    async fn read_state_raw(&mut self) -> Result<RawState, HalError> {
-        let mut bytes: RawState = [0; 5];
-        for byte in bytes.iter_mut() {
-            *byte = self.read_byte().await?;
-        }
-        debug!("state: {:?}", bytes);
-        Ok(bytes)
-    }
-
-    // Reads a byte of data from the sensor.
-    async fn read_byte(&mut self) -> Result<u8, HalError> {
-        let mut byte: u8 = 0;
-        for i in 0..8 {
-            let bit_mask = 1 << (7 - (i % 8));
-            if self.read_bit().await? {
-                byte |= bit_mask;
-            }
-        }
-        Ok(byte)
+        parse::<HalError>(state.as_bitslice())
     }
 
     /// Reads a bit of data from the sensor.
@@ -158,12 +139,10 @@ where
         self.debug_pin.set_low()?;
         result?;
 
-        // A high level of 26-28μ indicates a `0` bit, 70μ indicates a `1` bit.
+        // A high level of ~30μ indicates a `0` bit, 70μ indicates a `1` bit.
         if duration.as_micros() > 30 + 20 {
-            debug!("got 1 bit, duration: {}", duration.as_micros());
             Ok(true)
         } else {
-            debug!("got 0 bit, duration: {}", duration.as_micros());
             Ok(false)
         }
     }
@@ -177,18 +156,10 @@ where
         };
         Ok(())
     }
-
-    async fn wait_for_exclusive(&mut self, state: PinState, timeout: u32) -> Result<(), HalError> {
-        let timeout = self.delay.delay_us(timeout);
-        match state {
-            PinState::Low => timeout!(self.pin.wait_for_falling_edge(), timeout).transpose()?,
-            PinState::High => timeout!(self.pin.wait_for_rising_edge(), timeout).transpose()?,
-        };
-        Ok(())
-    }
 }
 
-fn parse_state<HalError>(bytes: &[u8]) -> Result<State, HalError> {
+/// Parses a DHT11 payload.
+fn parse<HalError>(payload: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
     // The DHT11 sends payloads in two's compliment, most significant bit first. A payload
     // is formatted as follows:
     //
@@ -221,8 +192,10 @@ fn parse_state<HalError>(bytes: &[u8]) -> Result<State, HalError> {
     //
     // See: datasheet § 5.
 
-    let expected_checksum = bytes[4];
-    let actual_checksum = bytes[0..=3].iter().fold(0u8, |sum, v| sum.wrapping_add(*v));
+    let expected_checksum = payload[32..40].load_be::<u8>();
+    let actual_checksum = payload[0..32]
+        .chunks(8)
+        .fold(0u8, |sum, v| sum.wrapping_add(v.load_be::<u8>()));
     if expected_checksum != actual_checksum {
         return Err(Error::ChecksumMismatch {
             expected: expected_checksum,
@@ -230,17 +203,21 @@ fn parse_state<HalError>(bytes: &[u8]) -> Result<State, HalError> {
         });
     }
 
-    let humidity = bytes[0];
-    let temp_signed = bytes[2];
+    let humidity = payload[0..8].load_be::<u8>();
+    let temp_signed = payload[16..24].load_be::<u8>();
     let temperature = {
         let (signed, magnitude) = convert_signed(temp_signed);
         let temp_sign = if signed { -1 } else { 1 };
         temp_sign * magnitude as i8
     };
 
-    Ok(State {
-        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature as f32),
+    if !(0u8..=100).contains(&humidity) {
+        return Err(Error::InvalidHumidity(humidity as f32));
+    }
+
+    Ok(Data {
         humidity: Ratio::new::<percent>(humidity as f32),
+        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature as f32),
     })
 }
 
@@ -257,21 +234,51 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_read_state_raw() {
+    fn typical_payload_positive_temp() {
+        let state = parse::<Infallible>([0x27, 0x00, 0x14, 0x00, 0x3b].view_bits()).unwrap();
+        assert_eq!(state.humidity.get::<percent>(), 39.0);
+        assert_eq!(state.temperature.get::<degree_celsius>(), 20.0);
+    }
+
+    #[test]
+    fn typical_payload_negative_temp() {
+        let state = parse::<Infallible>([0x27, 0x00, 0x94, 0x00, 0xbb].view_bits()).unwrap();
+        assert_eq!(state.humidity.get::<percent>(), 39.0);
+        assert_eq!(state.temperature.get::<degree_celsius>(), -20.0);
+    }
+
+    #[test]
+    fn checksum_mismatch() {
         assert_eq!(
-            parse_state::<Infallible>(&[0x32, 0, 0x1B, 0, 0x4D]).unwrap(),
-            State {
-                temperature: ThermodynamicTemperature::new::<degree_celsius>(27.0),
-                humidity: Ratio::new::<percent>(50.0),
-            }
+            parse::<Infallible>([0x27, 0x00, 0x14, 0x00, 0xff].view_bits()),
+            Err(Error::ChecksumMismatch {
+                expected: 0xff,
+                actual: 0x3b
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_humidity() {
+        assert_eq!(
+            parse::<Infallible>([0x00, 0x00, 0x14, 0x00, 0x14].view_bits()),
+            Ok(Data {
+                humidity: Ratio::new::<percent>(0.0),
+                temperature: ThermodynamicTemperature::new::<degree_celsius>(20.0),
+            })
         );
 
         assert_eq!(
-            parse_state::<Infallible>(&[0x80, 0, 0x83, 0, 0x3]).unwrap(),
-            State {
-                temperature: ThermodynamicTemperature::new::<degree_celsius>(-3.0),
-                humidity: Ratio::new::<percent>(128.0),
-            }
+            parse::<Infallible>([0x64, 0x00, 0x14, 0x00, 0x78].view_bits()),
+            Ok(Data {
+                humidity: Ratio::new::<percent>(100.0),
+                temperature: ThermodynamicTemperature::new::<degree_celsius>(20.0),
+            })
+        );
+
+        assert_eq!(
+            parse::<Infallible>([0x65, 0x00, 0x14, 0x00, 0x79].view_bits()),
+            Err(Error::InvalidHumidity(101.0))
         );
     }
 }

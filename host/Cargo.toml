@@ -29,3 +29,6 @@ embassy-time = { version = "0.1.2", git = "https://github.com/embassy-rs/embassy
     "defmt",
     "defmt-timestamp-uptime",
 ] }
+
+[dev-dependencies]
+anyhow = "1.0"
