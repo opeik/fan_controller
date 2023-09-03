@@ -123,8 +123,11 @@ where
         let tolerance = Ratio::new::<ratio>(2.0);
         let timeout = Time::new::<microsecond>(80.0) * tolerance;
 
-        let result = self.wait_for_state(PinState::Low, timeout).timed().await;
-        let state = (*result)?;
+        let result = self
+            .wait_for_state(PinState::Low, timeout)
+            
+            // .timed(|x, duration| (x, duration))
+            .await;
 
         // self.wait(PinState::Low, timeout).await?;
         // self.wait(PinState::High, timeout).await?;
