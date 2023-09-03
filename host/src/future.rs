@@ -69,7 +69,6 @@ pub trait TimedExt: Sized + Future {
     }
 }
 
-// All futures can use the `.timed` method defined above
 impl<F: Future> TimedExt for F {}
 
 /// Polls a future along with a timeout. If the timeout finishes first, returns

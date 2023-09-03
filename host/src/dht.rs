@@ -21,7 +21,7 @@ pub enum Error<HalError> {
     /// The read timed out.
     #[error("read timed out")]
     Timeout,
-    /// The state checksum is mismatched.
+    /// The checksum is mismatched.
     #[error(
         "checksum mismatched (expected {:#0x}, found {:#0x})",
         expected,
@@ -95,7 +95,7 @@ where
         debug!("connecting to dht11...");
         self.connect().await?;
 
-        debug!("reading state from dht11...");
+        debug!("reading from dht11...");
         self.read_data().await
     }
 
@@ -160,35 +160,34 @@ where
 
 /// Parses a DHT11 payload.
 fn parse<HalError>(payload: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
-    // The DHT11 sends payloads in two's compliment, most significant bit first. A payload
-    // is formatted as follows:
+    // A DHT payload is formatted as follows, the most significant bit is first:
     //
-    //          0                   1
+    //  0                   1
     //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    // |  Humidity int |  Humidity dec |
+    // |  Humidity int | Humidity frac |
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    // |Temperature int|Temperature dec|
+    // |    Temp int   |   Temp frac   |
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     // |    Checksum   |
     // +-+-+-+-+-+-+-+-+
     //
     // where:
-    // - Humidity (integral)
-    //     - 8 bits, signed
+    // - Humidity integral
+    //     - 8 bits
     //     - The integral component of the relative humidity
-    // - Humidity (decimal)
-    //     - 8 bits, unsigned
+    // - Humidity fractional
+    //     - 8 bits
     //     - The decimal component of the relative humidity
-    // - Temperature (integral)
-    //     - 8 bits, signed
+    // - Temperature integral
+    //     - 8 bits
     //     - The integral component of the temperature
-    // - Temperature (decimal)
-    //     - 8 bits, unsigned
+    // - Temperature fractional
+    //     - 8 bits
     //     - The decimal component of the temperature
     // - Checksum
-    //     - 8 bits, unsigned
-    //     - Should match the sum of all other bytes
+    //     - 8 bits
+    //     - Equal to the sum of the rest of the payload
     //
     // See: datasheet § 5.
 
@@ -196,39 +195,45 @@ fn parse<HalError>(payload: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
     let actual_checksum = payload[0..32]
         .chunks(8)
         .fold(0u8, |sum, v| sum.wrapping_add(v.load_be::<u8>()));
-    if expected_checksum != actual_checksum {
+
+    if actual_checksum != expected_checksum {
         return Err(Error::ChecksumMismatch {
-            expected: expected_checksum,
             actual: actual_checksum,
+            expected: expected_checksum,
         });
     }
 
-    let humidity = payload[0..8].load_be::<u8>();
-    let temp_signed = payload[16..24].load_be::<u8>();
-    let temperature = {
-        let (signed, magnitude) = convert_signed(temp_signed);
-        let temp_sign = if signed { -1 } else { 1 };
-        temp_sign * magnitude as i8
-    };
+    let humidity = i16_fixed_to_f32(&payload[0..16]);
+    let temp = i16_fixed_to_f32(&payload[16..32]);
 
-    if !(0u8..=100).contains(&humidity) {
-        return Err(Error::InvalidHumidity(humidity as f32));
+    if !(0.0..=100.0).contains(&humidity) {
+        return Err(Error::InvalidHumidity(humidity));
     }
 
     Ok(Data {
-        humidity: Ratio::new::<percent>(humidity as f32),
-        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature as f32),
+        humidity: Ratio::new::<percent>(humidity),
+        temperature: ThermodynamicTemperature::new::<degree_celsius>(temp),
     })
 }
 
-fn convert_signed(x: u8) -> (bool, u8) {
-    let sign = x & 0x80 != 0;
-    let magnitude = x & 0x7F;
-    (sign, magnitude)
+/// Converts a fixed point [`i16`] to a [`f32`] given the format:
+///
+/// ```txt
+///  0                   1
+///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |    Integral   |   Fractional  |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
+fn i16_fixed_to_f32(x: &BitSlice<u8, Msb0>) -> f32 {
+    let is_signed = x[0];
+    let sign = if is_signed { -1i8 } else { 1i8 };
+    let magnitude = x[1..8].load_be::<u8>();
+    (sign * (magnitude as i8)) as f32
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use core::convert::Infallible;
 
     use super::*;
