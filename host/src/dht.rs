@@ -1,5 +1,5 @@
 use bitvec::{array::BitArray, prelude::*, BitArr};
-use defmt::debug;
+use defmt::{debug, info};
 use embassy_time::Instant;
 use embedded_hal::digital::{InputPin, OutputPin, PinState};
 use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
@@ -120,8 +120,16 @@ where
         // See: datasheet § 5.2-3; figure 3.
         let tolerance = Ratio::new::<ratio>(2.0);
         let timeout = Time::new::<microsecond>(80.0) * tolerance;
-        self.wait(PinState::Low, timeout).await?;
-        self.wait(PinState::High, timeout).await?;
+
+        let edge = self.wait_for_edge(timeout).await?;
+        let s = match edge {
+            PinState::High => "high",
+            PinState::Low => "low",
+        };
+        info!("got edge, : {}", s);
+
+        // self.wait(PinState::Low, timeout).await?;
+        // self.wait(PinState::High, timeout).await?;
         Ok(())
     }
 
@@ -189,10 +197,13 @@ where
     // }
 
     /// Waits for a falling or rising edge until the timeout.
-    async fn wait_for_edge(&mut self, timeout: Time) -> Result<Option<()>, HalError> {
+    async fn wait_for_edge(&mut self, timeout: Time) -> Result<PinState, HalError> {
         let timeout = self.delay.delay_us(timeout.get::<microsecond>() as u32);
         match select!(self.pin.wait_for_any_edge(), timeout).transpose()? {
-            Some(v) => Ok(Some(v)),
+            Some(_) => match self.pin.is_low()? {
+                true => Ok(PinState::Low),
+                false => Ok(PinState::High),
+            },
             None => Err(Error::Timeout),
         }
     }
