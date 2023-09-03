@@ -14,6 +14,8 @@ use uom::si::{
     time::microsecond,
 };
 
+use crate::future::{Timed, TimedExt};
+
 macro_rules! select {
     ($future:expr, $timeout:expr) => {{
         let future = $future;
@@ -121,12 +123,8 @@ where
         let tolerance = Ratio::new::<ratio>(2.0);
         let timeout = Time::new::<microsecond>(80.0) * tolerance;
 
-        let edge = self.wait_for_edge(timeout).await?;
-        let s = match edge {
-            PinState::High => "high",
-            PinState::Low => "low",
-        };
-        info!("got edge, : {}", s);
+        let result = self.wait_for_state(PinState::Low, timeout).timed().await;
+        let state = (*result)?;
 
         // self.wait(PinState::Low, timeout).await?;
         // self.wait(PinState::High, timeout).await?;
@@ -206,5 +204,15 @@ where
             },
             None => Err(Error::Timeout),
         }
+    }
+
+    /// Waits for a pin state until the timeout. If the pin state is already
+    async fn wait_for_state(&mut self, state: PinState, timeout: Time) -> Result<(), HalError> {
+        let timeout = self.delay.delay_us(timeout.get::<microsecond>() as u32);
+        match state {
+            PinState::Low => select!(self.pin.wait_for_low(), timeout).transpose()?,
+            PinState::High => select!(self.pin.wait_for_high(), timeout).transpose()?,
+        };
+        Ok(())
     }
 }

@@ -16,6 +16,7 @@ uom = { version = "0.35", default-features = false, features = [
 ] }
 either = { version = "1.9.0", default-features = false }
 bitvec = { version = "1.0", default-features = false, features = ["atomic"] }
+pin-project = "1.1"
 
 # Embassy-related dependencies
 embedded-hal = "=1.0.0-rc.1"

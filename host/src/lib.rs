@@ -3,3 +3,4 @@
 
 pub mod dht;
 pub mod fan;
+pub mod future;
