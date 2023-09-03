@@ -3,4 +3,4 @@ members = ["app", "self_tests"]
 resolver = "2"
 
 [profile.release]
-debug = 2
+debug = "full"

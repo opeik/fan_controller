@@ -1,15 +1,15 @@
-use bitvec::{array::BitArray, prelude::*, BitArr};
-use defmt::{debug, trace};
+use bitvec::{prelude::Msb0, BitArr};
+use defmt::debug;
+use embassy_time::Instant;
 use embedded_hal::digital::{InputPin, OutputPin, PinState};
 use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
 use uom::si::{
-    f32::{Ratio, ThermodynamicTemperature, Time},
-    ratio::{percent, ratio},
+    f32::{Ratio, ThermodynamicTemperature},
+    ratio::percent,
     thermodynamic_temperature::degree_celsius,
-    time::microsecond,
 };
 
-use crate::future::{timed, timeout, TimedExt};
+use crate::future::{timed, timeout};
 
 type Result<T, E> = core::result::Result<T, Error<E>>;
 
@@ -33,17 +33,19 @@ pub enum Error<HalError> {
     HardwareError(#[from] HalError),
 }
 
-pub struct Dht11<Pin, Delay, HalError>
+pub struct Dht11<Pin, DebugPin, Delay, HalError>
 where
     Pin: InputPin<Error = HalError> + OutputPin<Error = HalError> + Wait,
+    DebugPin: OutputPin<Error = HalError>,
     Delay: HalDelay,
 {
     pin: Pin,
     delay: Delay,
+    debug_pin: DebugPin,
 }
 
 /// Represents the current sensor state.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq)]
 pub struct State {
     /// Current temperature.
     pub temperature: ThermodynamicTemperature,
@@ -51,14 +53,7 @@ pub struct State {
     pub humidity: Ratio,
 }
 
-/// Represents the current sensor state.
-#[derive(Default, Debug)]
-pub struct RawState {
-    /// Current temperature.
-    pub temperature: i8,
-    /// Current humidity.
-    pub humidity: u8,
-}
+type RawState = BitArr!(for 5 * 8, in u32, Msb0);
 
 impl defmt::Format for State {
     fn format(&self, f: defmt::Formatter) {
@@ -66,19 +61,24 @@ impl defmt::Format for State {
             f,
             "State {{ temperature: {}°C, humidity: {}% }}",
             self.temperature.get::<degree_celsius>(),
-            self.humidity.value,
+            self.humidity.get::<percent>(),
         )
     }
 }
 
-impl<Pin, Delay, HalError> Dht11<Pin, Delay, HalError>
+impl<Pin, DebugPin, Delay, HalError> Dht11<Pin, DebugPin, Delay, HalError>
 where
     Pin: InputPin<Error = HalError> + OutputPin<Error = HalError> + Wait,
+    DebugPin: OutputPin<Error = HalError>,
     Delay: HalDelay,
 {
     /// Creates a new [`Dht11`].
-    pub fn new(pin: Pin, delay: Delay) -> Self {
-        Dht11 { pin, delay }
+    pub fn new(pin: Pin, delay: Delay, debug_pin: DebugPin) -> Self {
+        Dht11 {
+            pin,
+            delay,
+            debug_pin,
+        }
     }
 
     /// Reads the current state of the sensor.
@@ -99,99 +99,130 @@ where
     async fn wake(&mut self) -> Result<(), HalError> {
         // See: Datasheet § 5.2; figure 2.
         self.pin.set_low()?;
-        self.delay.delay_ms(18).await;
+        self.delay.delay_ms(30).await;
+
         self.pin.set_high()?;
         self.delay.delay_us(40).await;
+
         Ok(())
     }
 
     /// Opens a connection to the sensor.
     async fn connect(&mut self) -> Result<(), HalError> {
         // See: datasheet § 5.2-3; figure 3.
-        let tolerance = Ratio::new::<ratio>(1.5);
-        let timeout = Time::new::<microsecond>(80.0) * tolerance;
-        self.wait_for(PinState::Low, timeout).await?;
+        let timeout = 80 + 5;
         self.wait_for(PinState::High, timeout).await?;
+        self.wait_for(PinState::Low, timeout).await?;
         Ok(())
     }
 
     /// Reads the state of the sensor.
     async fn read_state(&mut self) -> Result<State, HalError> {
-        // The DHT11 sends payloads in two's compliment, most significant bit first. A payload
-        // is formatted as follows:
-        //
-        //          0                   1
-        //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
-        // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        // |  Humidity int |  Humidity dec |
-        // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        // |Temperature int|Temperature dec|
-        // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        // |    Checksum   |
-        // +-+-+-+-+-+-+-+-+
-        //
-        // where:
-        // - Humidity (integral)
-        //     - 8 bits
-        //     - The integral component of the relative humidity
-        // - Humidity (decimal)
-        //     - 8 bits
-        //     - The decimal component of the relative humidity
-        // - Temperature (integral)
-        //     - 8 bits
-        //     - The integral component of the temperature
-        // - Temperature (decimal)
-        //     - 8 bits
-        //     - The decimal component of the temperature
-        // - Checksum
-        //     - 8 bits
-        //     - Should match the sum of all other bytes
-        let mut bits: BitArr!(for 40, in u8) = BitArray::ZERO;
-        for bit in 0..40 {
-            trace!("reading state bit {}", bit);
-            bits.set(bit, self.read_bit().await?);
+        let bytes = self.read_state_raw().await?;
+
+        for byte in bytes {
+            debug!("read byte: {:08b}", byte);
         }
 
-        parse_state::<HalError>(bits.as_bitslice())
+        parse_state::<HalError>(&bytes)
     }
 
-    /// Reads a bit of state from the sensor.
+    async fn read_state_raw(&mut self) -> Result<RawState, HalError> {
+        let mut bytes: RawState = [0; 5];
+        for byte in bytes.iter_mut() {
+            *byte = self.read_byte().await?;
+        }
+        debug!("state: {:?}", bytes);
+        Ok(bytes)
+    }
+
+    // Reads a byte of data from the sensor.
+    async fn read_byte(&mut self) -> Result<u8, HalError> {
+        let mut byte: u8 = 0;
+        for i in 0..8 {
+            let bit_mask = 1 << (7 - (i % 8));
+            if self.read_bit().await? {
+                byte |= bit_mask;
+            }
+        }
+        Ok(byte)
+    }
+
+    /// Reads a bit of data from the sensor.
     async fn read_bit(&mut self) -> Result<bool, HalError> {
         // See: datasheet § 5.3; figure 4.
-        let tolerance = Ratio::new::<ratio>(1.2);
+        self.wait_for(PinState::High, 55).await?;
 
-        trace!("waiting for start of transmission...");
-        self.wait_for(PinState::Low, Time::new::<microsecond>(50.0) * tolerance)
-            .await?;
-
-        trace!("reading state bit...");
-        let (result, high_duration) =
-            timed!(self.wait_for(PinState::High, Time::new::<microsecond>(70.0) * tolerance));
+        self.debug_pin.set_high()?;
+        let (result, duration) = timed!(self.wait_for(PinState::Low, 70));
+        self.debug_pin.set_low()?;
         result?;
 
         // A high level of 26-28μ indicates a `0` bit, 70μ indicates a `1` bit.
-        if high_duration.as_micros() < (Time::new::<microsecond>(28.0) * tolerance).value as u64 {
-            Ok(false)
-        } else {
+        if duration.as_micros() > 30 + 20 {
+            debug!("got 1 bit, duration: {}", duration.as_micros());
             Ok(true)
+        } else {
+            debug!("got 0 bit, duration: {}", duration.as_micros());
+            Ok(false)
         }
     }
 
     /// Waits for a pin state until the timeout.
-    async fn wait_for(&mut self, state: PinState, timeout: Time) -> Result<(), HalError> {
-        let timeout = self.delay.delay_us(timeout.get::<microsecond>() as u32);
+    async fn wait_for(&mut self, state: PinState, timeout: u32) -> Result<(), HalError> {
+        let timeout = self.delay.delay_us(timeout);
         match state {
             PinState::Low => timeout!(self.pin.wait_for_low(), timeout).transpose()?,
             PinState::High => timeout!(self.pin.wait_for_high(), timeout).transpose()?,
         };
         Ok(())
     }
+
+    async fn wait_for_exclusive(&mut self, state: PinState, timeout: u32) -> Result<(), HalError> {
+        let timeout = self.delay.delay_us(timeout);
+        match state {
+            PinState::Low => timeout!(self.pin.wait_for_falling_edge(), timeout).transpose()?,
+            PinState::High => timeout!(self.pin.wait_for_rising_edge(), timeout).transpose()?,
+        };
+        Ok(())
+    }
 }
 
-fn parse_state<HalError>(bits: &BitSlice<u8>) -> Result<State, HalError> {
-    let expected_checksum = bits[32..].load::<u8>();
-    let actual_checksum = (bits[..32].iter().fold(0u16, |acc, x| acc + *x as u16) & 0xff) as u8;
+fn parse_state<HalError>(bytes: &[u8]) -> Result<State, HalError> {
+    // The DHT11 sends payloads in two's compliment, most significant bit first. A payload
+    // is formatted as follows:
+    //
+    //          0                   1
+    //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |  Humidity int |  Humidity dec |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |Temperature int|Temperature dec|
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |    Checksum   |
+    // +-+-+-+-+-+-+-+-+
+    //
+    // where:
+    // - Humidity (integral)
+    //     - 8 bits, signed
+    //     - The integral component of the relative humidity
+    // - Humidity (decimal)
+    //     - 8 bits, unsigned
+    //     - The decimal component of the relative humidity
+    // - Temperature (integral)
+    //     - 8 bits, signed
+    //     - The integral component of the temperature
+    // - Temperature (decimal)
+    //     - 8 bits, unsigned
+    //     - The decimal component of the temperature
+    // - Checksum
+    //     - 8 bits, unsigned
+    //     - Should match the sum of all other bytes
+    //
+    // See: datasheet § 5.
 
+    let expected_checksum = bytes[4];
+    let actual_checksum = bytes[0..=3].iter().fold(0u8, |sum, v| sum.wrapping_add(*v));
     if expected_checksum != actual_checksum {
         return Err(Error::ChecksumMismatch {
             expected: expected_checksum,
@@ -199,42 +230,48 @@ fn parse_state<HalError>(bits: &BitSlice<u8>) -> Result<State, HalError> {
         });
     }
 
-    let humidity = bits[0..8].load::<u8>() as f32;
-    let temperature = bits[16..24].load::<u8>() as f32;
-
-    if !(0.0..=100.0).contains(&humidity) {
-        return Err(Error::InvalidHumidity(humidity));
-    }
-
-    if !(0.0..=50.0).contains(&temperature) {
-        return Err(Error::InvalidTemperature(temperature));
-    }
+    let humidity = bytes[0];
+    let temp_signed = bytes[2];
+    let temperature = {
+        let (signed, magnitude) = convert_signed(temp_signed);
+        let temp_sign = if signed { -1 } else { 1 };
+        temp_sign * magnitude as i8
+    };
 
     Ok(State {
-        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature),
-        humidity: Ratio::new::<percent>(humidity),
+        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature as f32),
+        humidity: Ratio::new::<percent>(humidity as f32),
     })
+}
+
+fn convert_signed(x: u8) -> (bool, u8) {
+    let sign = x & 0x80 != 0;
+    let magnitude = x & 0x7F;
+    (sign, magnitude)
 }
 
 #[cfg(test)]
 mod test {
+    use core::convert::Infallible;
+
     use super::*;
 
-    // #[test]
-    // fn test_raw_to_reading() {
-    //     assert_eq!(
-    //         parse_state([0x32, 0, 0x1B, 0]),
-    //         Reading {
-    //             temperature: 27,
-    //             relative_humidity: 50
-    //         }
-    //     );
-    //     assert_eq!(
-    //         parse_state([0x80, 0, 0x83, 0]),
-    //         Reading {
-    //             temperature: -3,
-    //             relative_humidity: 128
-    //         }
-    //     );
-    // }
+    #[test]
+    fn test_read_state_raw() {
+        assert_eq!(
+            parse_state::<Infallible>(&[0x32, 0, 0x1B, 0, 0x4D]).unwrap(),
+            State {
+                temperature: ThermodynamicTemperature::new::<degree_celsius>(27.0),
+                humidity: Ratio::new::<percent>(50.0),
+            }
+        );
+
+        assert_eq!(
+            parse_state::<Infallible>(&[0x80, 0, 0x83, 0, 0x3]).unwrap(),
+            State {
+                temperature: ThermodynamicTemperature::new::<degree_celsius>(-3.0),
+                humidity: Ratio::new::<percent>(128.0),
+            }
+        );
+    }
 }

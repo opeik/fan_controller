@@ -5,16 +5,16 @@
 #![feature(error_in_core)]
 #![feature(impl_trait_projections)]
 
-mod pin;
-
+use cortex_m::peripheral;
 use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    gpio::{Flex, Level, Output, OutputOpenDrain},
+    gpio::{Level, Output, OutputOpenDrain},
     pwm::{Channel, Config as PwmConfig, Pwm},
 };
 use embassy_time::{Delay, Duration, Timer};
+use embedded_hal::digital::OutputPin;
 use fan_controller::{dht::Dht11, fan::FanSpeed};
 use panic_probe as _;
 use uom::si::{
@@ -22,8 +22,6 @@ use uom::si::{
     frequency::hertz,
     ratio::percent,
 };
-
-use crate::pin::InputOutputPin;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -40,11 +38,11 @@ async fn main(_spawner: Spawner) {
     set_fan_speed(&mut pwm, FanSpeed(Ratio::new::<percent>(0.0)));
     info!("pwm initialized!");
 
+    Timer::after(Duration::from_secs(1)).await;
     let mut temp_sensor = Dht11::new(
-        InputOutputPin {
-            pin: Flex::new(peripherals.PIN_16),
-        },
+        OutputOpenDrain::new(peripherals.PIN_16, Level::High),
         Delay,
+        Output::new(peripherals.PIN_17, Level::Low),
     );
 
     loop {

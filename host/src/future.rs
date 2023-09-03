@@ -96,6 +96,7 @@ macro_rules! timeout {
 /// duration)`.
 macro_rules! timed {
     ($e:expr) => {{
+        use crate::future::TimedExt;
         let result = $e.timed().await;
         let duration = result.duration();
         let inner = result.inner();
