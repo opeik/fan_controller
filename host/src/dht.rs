@@ -28,7 +28,7 @@ pub enum Error<HalError> {
         actual
     )]
     ChecksumMismatch { expected: u8, actual: u8 },
-    #[error("invalid temperature, (expected 0≤x≤50°C, got {0}°C)")]
+    #[error("invalid temperature, (expected -50≤x≤50°C, got {0}°C)")]
     InvalidTemperature(f32),
     #[error("invalid humidity, (expected 0≤x≤100%, got {0}%)")]
     InvalidHumidity(f32),
@@ -204,15 +204,19 @@ fn parse<HalError>(payload: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
     }
 
     let humidity = i16_fixed_to_f32(&payload[0..16]);
-    let temp = i16_fixed_to_f32(&payload[16..32]);
+    let temperature = i16_fixed_to_f32(&payload[16..32]);
 
     if !(0.0..=100.0).contains(&humidity) {
         return Err(Error::InvalidHumidity(humidity));
     }
 
+    if !(-50.0..=50.0).contains(&temperature) {
+        return Err(Error::InvalidTemperature(temperature));
+    }
+
     Ok(Data {
         humidity: Ratio::new::<percent>(humidity),
-        temperature: ThermodynamicTemperature::new::<degree_celsius>(temp),
+        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature),
     })
 }
 
@@ -240,16 +244,24 @@ mod tests {
 
     #[test]
     fn typical_payload_positive_temp() {
-        let state = parse::<Infallible>([0x27, 0x00, 0x14, 0x00, 0x3b].view_bits()).unwrap();
-        assert_eq!(state.humidity.get::<percent>(), 39.0);
-        assert_eq!(state.temperature.get::<degree_celsius>(), 20.0);
+        assert_eq!(
+            parse::<Infallible>([0x27, 0x00, 0x14, 0x00, 0x3b].view_bits()).unwrap(),
+            Data {
+                humidity: Ratio::new::<percent>(39.0),
+                temperature: ThermodynamicTemperature::new::<degree_celsius>(20.0),
+            }
+        );
     }
 
     #[test]
     fn typical_payload_negative_temp() {
-        let state = parse::<Infallible>([0x27, 0x00, 0x94, 0x00, 0xbb].view_bits()).unwrap();
-        assert_eq!(state.humidity.get::<percent>(), 39.0);
-        assert_eq!(state.temperature.get::<degree_celsius>(), -20.0);
+        assert_eq!(
+            parse::<Infallible>([0x27, 0x00, 0x94, 0x00, 0xbb].view_bits()).unwrap(),
+            Data {
+                humidity: Ratio::new::<percent>(39.0),
+                temperature: ThermodynamicTemperature::new::<degree_celsius>(-20.0),
+            }
+        );
     }
 
     #[test]

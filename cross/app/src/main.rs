@@ -48,7 +48,7 @@ async fn main(_spawner: Spawner) {
 
         match temp_sensor.read().await {
             Ok(v) => info!("{:?}", v),
-            Err(e) => info!("failed to read dht sensor: {:?}", e),
+            Err(e) => info!("failed to read sensor: {}", e),
         }
 
         Timer::after(Duration::from_secs(1)).await;
