@@ -32,3 +32,4 @@ embassy-time = { version = "0.1.2", git = "https://github.com/embassy-rs/embassy
 
 [dev-dependencies]
 anyhow = "1.0"
+float_eq = "1.0"

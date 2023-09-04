@@ -1,3 +1,58 @@
+//! DHT11 temperature and humidity sensor driver.
+//!
+//! # Protocol
+//!
+//! The protocol for requesting data from the DHT11 is as follows:
+//!
+//! ```txt
+//!                                             DATA
+//!                                ┌─────────────────────────────┐
+//!     SYN    ACK       READY       SOT   0 BIT   SOT   1 BIT
+//!    ┌────┐ ┌────┐ ┌───────────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐
+//! ──┐      ┌──────┐      ┌──────┐      ┌──────┐      ┌──────┐
+//!   │      │      │      │      │      │      │      │      │
+//!   └──────┘      └──────┘      └──────┘      └──────┘      └──
+//!     18ms   40μs   80μs   80μs   50μs   30μs   50μs   70μs
+//! ```
+//!
+//! - SYN: Request to synchronize by pulling the data pin low for 18ms
+//! - ACK: The DHT11 acknowledges the SYN by pulling the data pin up for 40μs
+//! - READY: The DHT11 signals it's ready by pulling the data pin low then high for 80μs each
+//! - SOT: The DHT11 signals the start of transmission by pulling the data pin low for 50μs, then:
+//!     - A high pulse of 30μs indicates a 0 bit
+//!     - A high pulse of 70μs indicates a 1 bit
+//!
+//! # Encoding
+//!
+//! A DHT11 payload is encoded as follows, the most significant bit is first:
+//!
+//! ```txt
+//!  0                   1
+//!  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+//! +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//! |  Humidity int | Humidity frac |
+//! +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//! |    Temp int   |   Temp frac   |
+//! +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//! |    Checksum   |
+//! +-+-+-+-+-+-+-+-+
+//! ```
+//!
+//! where:
+//! - Humidity integer (8 bits, signed)
+//!     - The integer component of humidity
+//! - Humidity fractional (8 bits, unsigned)
+//!     - The decimal component of humidity
+//! - Temperature integer (8 bits, signed)
+//!     - The integer component of temperature
+//! - Temperature fractional (8 bits, unsigned)
+//!     - The decimal component of temperature
+//! - Checksum (8 bits, unsigned)
+//!     - Equal to the sum of the rest of the payload
+//!
+//! See: [datasheet] § 5.
+//!
+//! [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 use bitvec::prelude::*;
 use defmt::debug;
 use embedded_hal::digital::{InputPin, OutputPin, PinState};
@@ -36,7 +91,7 @@ pub enum Error<HalError> {
     HardwareError(#[from] HalError),
 }
 
-/// Represents a DHT11 sensor.
+/// Represents a DHT11 temperature and humidity sensor.
 ///
 /// See: [the datasheet].
 ///
@@ -52,13 +107,22 @@ where
     debug_pin: DebugPin,
 }
 
-/// Represents the current sensor state.
+/// Represents [`Dht11`] sensor data.
 #[derive(Default, Debug, PartialEq)]
 pub struct Data {
     /// Current humidity.
     pub humidity: Ratio,
     /// Current temperature.
     pub temperature: ThermodynamicTemperature,
+}
+
+/// Represents raw [`Dht11`] sensor data.
+#[derive(Default, Debug, PartialEq)]
+struct RawData {
+    pub humidity: u8,
+    pub humidity_frac: u8,
+    pub temperature: u8,
+    pub temperature_frac: u8,
 }
 
 impl defmt::Format for Data {
@@ -87,7 +151,7 @@ where
         }
     }
 
-    /// Reads the current state of the sensor.
+    /// Reads data from the sensor.
     pub async fn read(&mut self) -> Result<Data, HalError> {
         debug!("waking dht11...");
         self.wake().await?;
@@ -120,13 +184,14 @@ where
         Ok(())
     }
 
-    /// Reads the state of the sensor.
+    /// Implements reading data from the sensor.
     async fn read_data(&mut self) -> Result<Data, HalError> {
-        let mut state = bitarr![u8, Msb0; 0; 40];
-        for mut bit in state.iter_mut() {
+        let mut data = bitarr![u8, Msb0; 0; 40];
+        for mut bit in data.iter_mut() {
             *bit = self.read_bit().await?;
         }
-        parse::<HalError>(state.as_bitslice())
+
+        parse::<HalError>(data.as_bitslice())
     }
 
     /// Reads a bit of data from the sensor.
@@ -158,53 +223,17 @@ where
     }
 }
 
-/// Parses a DHT11 payload.
-fn parse<HalError>(payload: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
-    // A DHT payload is formatted as follows, the most significant bit is first:
-    //
-    //  0                   1
-    //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
-    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    // |  Humidity int | Humidity frac |
-    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    // |    Temp int   |   Temp frac   |
-    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    // |    Checksum   |
-    // +-+-+-+-+-+-+-+-+
-    //
-    // where:
-    // - Humidity integral
-    //     - 8 bits
-    //     - The integral component of the relative humidity
-    // - Humidity fractional
-    //     - 8 bits
-    //     - The decimal component of the relative humidity
-    // - Temperature integral
-    //     - 8 bits
-    //     - The integral component of the temperature
-    // - Temperature fractional
-    //     - 8 bits
-    //     - The decimal component of the temperature
-    // - Checksum
-    //     - 8 bits
-    //     - Equal to the sum of the rest of the payload
-    //
-    // See: datasheet § 5.
+/// Parses a [`Dht11`] payload.
+fn parse<HalError>(data: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
+    let RawData {
+        humidity,
+        humidity_frac,
+        temperature,
+        temperature_frac,
+    } = parse_raw(data)?;
 
-    let expected_checksum = payload[32..40].load_be::<u8>();
-    let actual_checksum = payload[0..32]
-        .chunks(8)
-        .fold(0u8, |sum, v| sum.wrapping_add(v.load_be::<u8>()));
-
-    if actual_checksum != expected_checksum {
-        return Err(Error::ChecksumMismatch {
-            actual: actual_checksum,
-            expected: expected_checksum,
-        });
-    }
-
-    let humidity = i16_fixed_to_f32(&payload[0..16]);
-    let temperature = i16_fixed_to_f32(&payload[16..32]);
+    let humidity = fixed_to_f32([humidity, humidity_frac].view_bits());
+    let temperature = fixed_to_f32([temperature, temperature_frac].view_bits());
 
     if !(0.0..=100.0).contains(&humidity) {
         return Err(Error::InvalidHumidity(humidity));
@@ -220,54 +249,97 @@ fn parse<HalError>(payload: &BitSlice<u8, Msb0>) -> Result<Data, HalError> {
     })
 }
 
-/// Converts a fixed point [`i16`] to a [`f32`] given the format:
+/// Parses a [`Dht11`] payload into a raw representation.
+fn parse_raw<HalError>(data: &BitSlice<u8, Msb0>) -> Result<RawData, HalError> {
+    let expected_checksum = data[32..40].load_be::<u8>();
+    let actual_checksum = data[0..32]
+        .chunks(8)
+        .fold(0u8, |sum, v| sum.wrapping_add(v.load_be::<u8>()));
+
+    if actual_checksum != expected_checksum {
+        return Err(Error::ChecksumMismatch {
+            actual: actual_checksum,
+            expected: expected_checksum,
+        });
+    }
+
+    let humidity = data[0..8].load_be::<u8>();
+    let humidity_frac = data[8..16].load_be::<u8>();
+    let temperature = data[16..24].load_be::<u8>();
+    let temperature_frac = data[24..32].load_be::<u8>();
+
+    Ok(RawData {
+        humidity,
+        humidity_frac,
+        temperature,
+        temperature_frac,
+    })
+}
+
+/// Converts a signed 16 bit fixed point number to a [`f32`] given the format:
 ///
 /// ```txt
-///  0                   1
+///   0                   1
 ///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// |    Integral   |   Fractional  |
+/// |    Integer    |   Fractional  |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
-fn i16_fixed_to_f32(x: &BitSlice<u8, Msb0>) -> f32 {
+fn fixed_to_f32(x: &BitSlice<u8, Msb0>) -> f32 {
     let is_signed = x[0];
-    let sign = if is_signed { -1i8 } else { 1i8 };
-    let magnitude = x[1..8].load_be::<u8>();
-    (sign * (magnitude as i8)) as f32
+    let integral = x[1..8].load_be::<u8>() as f32;
+    let fractional = x[8..16].load_be::<u8>() as f32;
+    let sign = if is_signed { -1.0 } else { 1.0 };
+    sign * (integral + (fractional / 10.0))
 }
 
 #[cfg(test)]
 mod tests {
     use core::convert::Infallible;
 
+    use anyhow::Result;
+    use float_eq::assert_float_eq;
+
     use super::*;
 
+    type E = Infallible;
+
     #[test]
-    fn typical_payload_positive_temp() {
-        assert_eq!(
-            parse::<Infallible>([0x27, 0x00, 0x14, 0x00, 0x3b].view_bits()).unwrap(),
-            Data {
-                humidity: Ratio::new::<percent>(39.0),
-                temperature: ThermodynamicTemperature::new::<degree_celsius>(20.0),
-            }
-        );
+    fn typical_payload_positive_temp() -> Result<()> {
+        let payload = [0x27, 0x00, 0x14, 0x08, 0x43].view_bits();
+        let raw_data = parse_raw::<E>(payload)?;
+        assert_eq!(raw_data.humidity, 39);
+        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.temperature, 20);
+        assert_eq!(raw_data.temperature_frac, 8);
+
+        let data = parse::<E>(payload)?;
+        assert_float_eq!(data.humidity.get::<percent>(), 39.0, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.8, ulps <= 10);
+
+        Ok(())
     }
 
     #[test]
-    fn typical_payload_negative_temp() {
-        assert_eq!(
-            parse::<Infallible>([0x27, 0x00, 0x94, 0x00, 0xbb].view_bits()).unwrap(),
-            Data {
-                humidity: Ratio::new::<percent>(39.0),
-                temperature: ThermodynamicTemperature::new::<degree_celsius>(-20.0),
-            }
-        );
+    fn typical_payload_negative_temp() -> Result<()> {
+        let payload = [0x27, 0x00, 0x94, 0x00, 0xbb].view_bits();
+        let raw_data = parse_raw::<E>(payload)?;
+        assert_eq!(raw_data.humidity, 39);
+        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.temperature, 148);
+        assert_eq!(raw_data.temperature_frac, 0);
+
+        let data = parse::<E>(payload)?;
+        assert_float_eq!(data.humidity.get::<percent>(), 39.0, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), -20.0, ulps <= 10);
+
+        Ok(())
     }
 
     #[test]
     fn checksum_mismatch() {
         assert_eq!(
-            parse::<Infallible>([0x27, 0x00, 0x14, 0x00, 0xff].view_bits()),
+            parse::<E>([0x27, 0x00, 0x14, 0x00, 0xff].view_bits()),
             Err(Error::ChecksumMismatch {
                 expected: 0xff,
                 actual: 0x3b
@@ -276,26 +348,70 @@ mod tests {
     }
 
     #[test]
-    fn invalid_humidity() {
+    fn invalid_humidity() -> Result<()> {
+        let payload = [0x00, 0x00, 0x14, 0x00, 0x14].view_bits();
+        let raw_data = parse_raw::<E>(payload)?;
+        assert_eq!(raw_data.humidity, 0);
+        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.temperature, 20);
+        assert_eq!(raw_data.temperature_frac, 0);
+
+        let data = parse::<E>(payload)?;
+        assert_float_eq!(data.humidity.get::<percent>(), 0.0, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
+
+        let payload = [0x64, 0x00, 0x14, 0x00, 0x78].view_bits();
+        let raw_data = parse_raw::<E>(payload)?;
+        assert_eq!(raw_data.humidity, 100);
+        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.temperature, 20);
+        assert_eq!(raw_data.temperature_frac, 0);
+
+        let data = parse::<E>(payload)?;
+        assert_float_eq!(data.humidity.get::<percent>(), 100.0, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
+
         assert_eq!(
-            parse::<Infallible>([0x00, 0x00, 0x14, 0x00, 0x14].view_bits()),
-            Ok(Data {
-                humidity: Ratio::new::<percent>(0.0),
-                temperature: ThermodynamicTemperature::new::<degree_celsius>(20.0),
-            })
+            parse::<E>([0x64, 0x01, 0x14, 0x00, 0x79].view_bits()),
+            Err(Error::InvalidHumidity(100.1))
+        );
+
+        Ok(())
+    }
+    #[test]
+    fn invalid_temperature() -> Result<()> {
+        let payload = [0x14, 0x00, 0xB2, 0x00, 0xc6].view_bits();
+        let raw_data = parse_raw::<E>(payload)?;
+        assert_eq!(raw_data.humidity, 20);
+        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.temperature, 178);
+        assert_eq!(raw_data.temperature_frac, 0);
+
+        let data = parse::<E>(payload)?;
+        assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), -50.0, ulps <= 10);
+
+        let payload = [0x14, 0x00, 0x32, 0x00, 0x46].view_bits();
+        let raw_data = parse_raw::<E>(payload)?;
+        assert_eq!(raw_data.humidity, 20);
+        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.temperature, 50);
+        assert_eq!(raw_data.temperature_frac, 0);
+
+        let data = parse::<E>(payload)?;
+        assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 50.0, ulps <= 10);
+
+        assert_eq!(
+            parse::<E>([0x14, 0x00, 0xB2, 0x01, 0xc7].view_bits()),
+            Err(Error::InvalidTemperature(-50.1))
         );
 
         assert_eq!(
-            parse::<Infallible>([0x64, 0x00, 0x14, 0x00, 0x78].view_bits()),
-            Ok(Data {
-                humidity: Ratio::new::<percent>(100.0),
-                temperature: ThermodynamicTemperature::new::<degree_celsius>(20.0),
-            })
+            parse::<E>([0x14, 0x00, 0x32, 0x01, 0x47].view_bits()),
+            Err(Error::InvalidTemperature(50.1))
         );
 
-        assert_eq!(
-            parse::<Infallible>([0x65, 0x00, 0x14, 0x00, 0x79].view_bits()),
-            Err(Error::InvalidHumidity(101.0))
-        );
+        Ok(())
     }
 }
