@@ -287,10 +287,10 @@ fn parse_raw<HalError>(data: &BitSlice<u8, Msb0>) -> Result<RawData, HalError> {
 /// ```
 fn fixed_to_f32(x: &BitSlice<u8, Msb0>) -> f32 {
     let is_signed = x[0];
-    let integral = x[1..8].load_be::<u8>() as f32;
+    let integer = x[1..8].load_be::<u8>() as f32;
     let fractional = x[8..16].load_be::<u8>() as f32;
     let sign = if is_signed { -1.0 } else { 1.0 };
-    sign * (integral + (fractional / 10.0))
+    sign * (integer + (fractional / 10.0))
 }
 
 #[cfg(test)]
@@ -304,13 +304,24 @@ mod tests {
 
     type E = Infallible;
 
+    /// Converts a signed 8 bit integer to a [`i8`].
+    fn from_i8(x: i8) -> u8 {
+        let mut integer = x.abs().to_be() as u8;
+        let bits = integer.view_bits_mut::<Msb0>();
+        if x.is_negative() {
+            bits.set(0, true);
+        }
+
+        integer
+    }
+
     #[test]
-    fn typical_payload_positive_temp() -> Result<()> {
+    fn typical_positive_temp() -> Result<()> {
         let payload = [0x27, 0x00, 0x14, 0x08, 0x43].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
-        assert_eq!(raw_data.humidity, 39);
+        assert_eq!(raw_data.humidity, from_i8(39));
         assert_eq!(raw_data.humidity_frac, 0);
-        assert_eq!(raw_data.temperature, 20);
+        assert_eq!(raw_data.temperature, from_i8(20));
         assert_eq!(raw_data.temperature_frac, 8);
 
         let data = parse::<E>(payload)?;
@@ -321,12 +332,12 @@ mod tests {
     }
 
     #[test]
-    fn typical_payload_negative_temp() -> Result<()> {
+    fn typical_negative_temp() -> Result<()> {
         let payload = [0x27, 0x00, 0x94, 0x00, 0xbb].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
-        assert_eq!(raw_data.humidity, 39);
+        assert_eq!(raw_data.humidity, from_i8(39));
         assert_eq!(raw_data.humidity_frac, 0);
-        assert_eq!(raw_data.temperature, 148);
+        assert_eq!(raw_data.temperature, from_i8(-20));
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = parse::<E>(payload)?;
@@ -352,9 +363,9 @@ mod tests {
         // Check the lower boundary: 0%.
         let payload = [0x00, 0x00, 0x14, 0x00, 0x14].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
-        assert_eq!(raw_data.humidity, 0);
+        assert_eq!(raw_data.humidity, from_i8(0));
         assert_eq!(raw_data.humidity_frac, 0);
-        assert_eq!(raw_data.temperature, 20);
+        assert_eq!(raw_data.temperature, from_i8(20));
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = parse::<E>(payload)?;
@@ -364,9 +375,9 @@ mod tests {
         // Check the lower boundary: 100%.
         let payload = [0x64, 0x00, 0x14, 0x00, 0x78].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
-        assert_eq!(raw_data.humidity, 100);
+        assert_eq!(raw_data.humidity, from_i8(100));
         assert_eq!(raw_data.humidity_frac, 0);
-        assert_eq!(raw_data.temperature, 20);
+        assert_eq!(raw_data.temperature, from_i8(20));
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = parse::<E>(payload)?;
@@ -392,9 +403,9 @@ mod tests {
         // Check the lower boundary: -50.0°C.
         let payload = [0x14, 0x00, 0xB2, 0x00, 0xc6].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
-        assert_eq!(raw_data.humidity, 20);
+        assert_eq!(raw_data.humidity, from_i8(20));
         assert_eq!(raw_data.humidity_frac, 0);
-        assert_eq!(raw_data.temperature, 178);
+        assert_eq!(raw_data.temperature, from_i8(-50));
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = parse::<E>(payload)?;
@@ -404,9 +415,9 @@ mod tests {
         // Check the upper boundary: 50.0°C.
         let payload = [0x14, 0x00, 0x32, 0x00, 0x46].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
-        assert_eq!(raw_data.humidity, 20);
+        assert_eq!(raw_data.humidity, from_i8(20));
         assert_eq!(raw_data.humidity_frac, 0);
-        assert_eq!(raw_data.temperature, 50);
+        assert_eq!(raw_data.temperature, from_i8(50));
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = parse::<E>(payload)?;
