@@ -304,7 +304,7 @@ mod tests {
 
     type E = Infallible;
 
-    /// Converts a signed 8 bit integer to a [`i8`].
+    /// Converts a [`i8`] to a binary [`u8`].
     fn from_i8(x: i8) -> u8 {
         let mut integer = x.abs().to_be() as u8;
         let bits = integer.view_bits_mut::<Msb0>();
@@ -350,6 +350,14 @@ mod tests {
     #[test]
     fn checksum_mismatch() {
         assert_eq!(
+            parse::<E>([0x27, 0x00, 0x14, 0x00, 0x00].view_bits()),
+            Err(Error::ChecksumMismatch {
+                expected: 0x00,
+                actual: 0x3b
+            })
+        );
+
+        assert_eq!(
             parse::<E>([0x27, 0x00, 0x14, 0x00, 0xff].view_bits()),
             Err(Error::ChecksumMismatch {
                 expected: 0xff,
@@ -372,7 +380,7 @@ mod tests {
         assert_float_eq!(data.humidity.get::<percent>(), 0.0, ulps <= 10);
         assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
 
-        // Check the lower boundary: 100%.
+        // Check the upper boundary: 100%.
         let payload = [0x64, 0x00, 0x14, 0x00, 0x78].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, from_i8(100));
