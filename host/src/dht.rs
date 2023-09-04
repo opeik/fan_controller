@@ -129,9 +129,9 @@ impl defmt::Format for Data {
     fn format(&self, f: defmt::Formatter) {
         defmt::write!(
             f,
-            "Data {{ temperature: {}°C, humidity: {}% }}",
-            self.temperature.get::<degree_celsius>(),
+            "Data {{ humidity: {}%, temperature: {}°C }}",
             self.humidity.get::<percent>(),
+            self.temperature.get::<degree_celsius>(),
         )
     }
 }
@@ -191,6 +191,7 @@ where
             *bit = self.read_bit().await?;
         }
 
+        debug!("read data: {:08b}", data.as_raw_slice());
         parse::<HalError>(data.as_bitslice())
     }
 

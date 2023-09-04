@@ -1,9 +1,8 @@
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
 #![feature(async_fn_in_trait)]
 #![feature(error_in_core)]
-#![feature(impl_trait_projections)]
+#![feature(type_alias_impl_trait)]
 
 use defmt::info;
 use defmt_rtt as _;
@@ -36,12 +35,13 @@ async fn main(_spawner: Spawner) {
     set_fan_speed(&mut pwm, FanSpeed(Ratio::new::<percent>(0.0)));
     info!("pwm initialized!");
 
-    Timer::after(Duration::from_secs(1)).await;
+    info!("waiting for DHT11 to settle...");
     let mut temp_sensor = Dht11::new(
         OutputOpenDrain::new(peripherals.PIN_16, Level::High),
         Delay,
         Output::new(peripherals.PIN_17, Level::Low),
     );
+    Timer::after(Duration::from_secs(1)).await;
 
     loop {
         led.toggle();
