@@ -349,6 +349,7 @@ mod tests {
 
     #[test]
     fn invalid_humidity() -> Result<()> {
+        // Check the lower boundary: 0%.
         let payload = [0x00, 0x00, 0x14, 0x00, 0x14].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, 0);
@@ -360,6 +361,7 @@ mod tests {
         assert_float_eq!(data.humidity.get::<percent>(), 0.0, ulps <= 10);
         assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
 
+        // Check the lower boundary: 100%.
         let payload = [0x64, 0x00, 0x14, 0x00, 0x78].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, 100);
@@ -371,6 +373,13 @@ mod tests {
         assert_float_eq!(data.humidity.get::<percent>(), 100.0, ulps <= 10);
         assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
 
+        // Check below the lower boundary.
+        assert_eq!(
+            parse::<E>([0x80, 0x01, 0x14, 0x00, 0x95].view_bits()),
+            Err(Error::InvalidHumidity(-0.1))
+        );
+
+        // Check above the upper boundary.
         assert_eq!(
             parse::<E>([0x64, 0x01, 0x14, 0x00, 0x79].view_bits()),
             Err(Error::InvalidHumidity(100.1))
@@ -380,6 +389,7 @@ mod tests {
     }
     #[test]
     fn invalid_temperature() -> Result<()> {
+        // Check the lower boundary: -50.0°C.
         let payload = [0x14, 0x00, 0xB2, 0x00, 0xc6].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, 20);
@@ -391,6 +401,7 @@ mod tests {
         assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 10);
         assert_float_eq!(data.temperature.get::<degree_celsius>(), -50.0, ulps <= 10);
 
+        // Check the upper boundary: 50.0°C.
         let payload = [0x14, 0x00, 0x32, 0x00, 0x46].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, 20);
@@ -402,11 +413,13 @@ mod tests {
         assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 10);
         assert_float_eq!(data.temperature.get::<degree_celsius>(), 50.0, ulps <= 10);
 
+        // Check below the lower boundary.
         assert_eq!(
             parse::<E>([0x14, 0x00, 0xB2, 0x01, 0xc7].view_bits()),
             Err(Error::InvalidTemperature(-50.1))
         );
 
+        // Check above the upper boundary.
         assert_eq!(
             parse::<E>([0x14, 0x00, 0x32, 0x01, 0x47].view_bits()),
             Err(Error::InvalidTemperature(50.1))
