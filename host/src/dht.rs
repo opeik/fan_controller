@@ -317,15 +317,15 @@ mod tests {
 
     #[test]
     fn typical_positive_temp() -> Result<()> {
-        let payload = [0x27, 0x00, 0x14, 0x08, 0x43].view_bits();
+        let payload = [0x27, 0x03, 0x14, 0x08, 0x46].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, from_i8(39));
-        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.humidity_frac, 3);
         assert_eq!(raw_data.temperature, from_i8(20));
         assert_eq!(raw_data.temperature_frac, 8);
 
         let data = parse::<E>(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 39.0, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 39.3, ulps <= 10);
         assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.8, ulps <= 10);
 
         Ok(())
@@ -333,16 +333,16 @@ mod tests {
 
     #[test]
     fn typical_negative_temp() -> Result<()> {
-        let payload = [0x27, 0x00, 0x94, 0x00, 0xbb].view_bits();
+        let payload = [0x27, 0x03, 0x94, 0x08, 0xc6].view_bits();
         let raw_data = parse_raw::<E>(payload)?;
         assert_eq!(raw_data.humidity, from_i8(39));
-        assert_eq!(raw_data.humidity_frac, 0);
+        assert_eq!(raw_data.humidity_frac, 3);
         assert_eq!(raw_data.temperature, from_i8(-20));
-        assert_eq!(raw_data.temperature_frac, 0);
+        assert_eq!(raw_data.temperature_frac, 8);
 
         let data = parse::<E>(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 39.0, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), -20.0, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 39.3, ulps <= 10);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), -20.8, ulps <= 10);
 
         Ok(())
     }
