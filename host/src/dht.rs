@@ -157,6 +157,8 @@ where
 
     /// Connects to the sensor.
     async fn connect(&mut self) -> Result<(), HalError> {
+        const TOLERANCE_US: u32 = 10;
+
         // See: Datasheet § 5.2; figure 2.
         self.pin.set_low()?;
         self.delay.delay_ms(30).await;
@@ -164,11 +166,11 @@ where
         self.delay.delay_us(40).await;
 
         // See: datasheet § 5.2-3; figure 3.
-        let timeout = 80 + 10;
-        self.wait_for(PinState::High, timeout)
+        let timeout_us = 80 + TOLERANCE_US; // 10μs tolerance.
+        self.wait_for(PinState::High, timeout_us)
             .await
             .map_err(|_| Error::NotPresent)?;
-        self.wait_for(PinState::Low, timeout)
+        self.wait_for(PinState::Low, timeout_us)
             .await
             .map_err(|_| Error::NotPresent)?;
 
@@ -188,9 +190,11 @@ where
 
     /// Reads a bit of data from the sensor.
     async fn read_bit(&mut self) -> Result<bool, HalError> {
+        const TOLERANCE_US: u32 = 10;
+
         // See: datasheet § 5.3; figure 4.
         self.wait_for(PinState::High, 50).await?;
-        let (result, duration) = timed!(self.wait_for(PinState::Low, 70));
+        let (result, duration) = timed!(self.wait_for(PinState::Low, 70 + TOLERANCE_US));
         result?;
 
         // A high level of ~30μ indicates a `0` bit, 70μ indicates a `1` bit.
