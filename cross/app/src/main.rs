@@ -35,13 +35,9 @@ async fn main(_spawner: Spawner) {
     set_fan_speed(&mut pwm, FanSpeed(Ratio::new::<percent>(0.0)));
     info!("pwm initialized!");
 
-    info!("waiting for DHT11 to settle...");
-    let temp_pin = OutputOpenDrain::new(peripherals.PIN_16, Level::High);
-    temp_pin.set_low();
+    let mut temp_sensor = Dht11::new(OutputOpenDrain::new(peripherals.PIN_16, Level::High), Delay);
+    info!("waiting for DHT11 to initialize...");
     Timer::after(Duration::from_secs(1)).await;
-    temp_pin.set_high();
-
-    let mut temp_sensor = Dht11::new(Delay, Output::new(peripherals.PIN_17, Level::Low));
 
     loop {
         led.toggle();
