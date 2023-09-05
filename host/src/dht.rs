@@ -76,6 +76,9 @@ pub enum Error<HalError> {
     /// The read timed out.
     #[error("read timed out")]
     Timeout,
+    /// A bit's high voltage level duration too long.
+    #[error("found suspect bit")]
+    SuspectBit,
     /// The checksum is mismatched.
     #[error(
         "checksum mismatched (expected {:#0x}, found {:#0x})",
@@ -153,9 +156,6 @@ where
 
     /// Reads data from the sensor.
     pub async fn read(&mut self) -> Result<Data, HalError> {
-        debug!("waking dht11...");
-        self.wake().await?;
-
         debug!("connecting to dht11...");
         self.connect().await?;
 
@@ -163,24 +163,25 @@ where
         self.read_data().await
     }
 
-    /// Wakes the sensor up.
-    async fn wake(&mut self) -> Result<(), HalError> {
+    /// Connects to the sensor.
+    async fn connect(&mut self) -> Result<(), HalError> {
         // See: Datasheet § 5.2; figure 2.
         self.pin.set_low()?;
         self.delay.delay_ms(30).await;
-
         self.pin.set_high()?;
         self.delay.delay_us(40).await;
 
-        Ok(())
-    }
-
-    /// Opens a connection to the sensor.
-    async fn connect(&mut self) -> Result<(), HalError> {
         // See: datasheet § 5.2-3; figure 3.
-        let timeout = 80 + 5;
-        self.wait_for(PinState::High, timeout).await?;
-        self.wait_for(PinState::Low, timeout).await?;
+        let timeout = 80 + 10;
+        self.debug_pin.set_high()?;
+        self.wait_for(PinState::High, timeout)
+            .await
+            .map_err(|_| Error::NotPresent)?;
+        self.wait_for(PinState::Low, timeout)
+            .await
+            .map_err(|_| Error::NotPresent)?;
+        self.debug_pin.set_low()?;
+
         Ok(())
     }
 
@@ -198,7 +199,9 @@ where
     /// Reads a bit of data from the sensor.
     async fn read_bit(&mut self) -> Result<bool, HalError> {
         // See: datasheet § 5.3; figure 4.
-        self.wait_for(PinState::High, 55).await?;
+        self.debug_pin.set_high()?;
+        self.wait_for(PinState::High, 50).await?;
+        self.debug_pin.set_low()?;
 
         self.debug_pin.set_high()?;
         let (result, duration) = timed!(self.wait_for(PinState::Low, 70));
@@ -206,21 +209,25 @@ where
         result?;
 
         // A high level of ~30μ indicates a `0` bit, 70μ indicates a `1` bit.
-        if duration.as_micros() > 30 + 20 {
-            Ok(true)
-        } else {
-            Ok(false)
+        match duration.as_micros() {
+            0..=40 => Ok(false),
+            41..=80 => Ok(true),
+            _ => Err(Error::SuspectBit),
         }
     }
 
     /// Waits for a pin state until the timeout.
-    async fn wait_for(&mut self, state: PinState, timeout: u32) -> Result<(), HalError> {
-        let timeout = self.delay.delay_us(timeout);
-        match state {
-            PinState::Low => timeout!(self.pin.wait_for_low(), timeout).transpose()?,
-            PinState::High => timeout!(self.pin.wait_for_high(), timeout).transpose()?,
+    async fn wait_for(&mut self, state: PinState, timeout_us: u32) -> Result<(), HalError> {
+        let timeout = self.delay.delay_us(timeout_us);
+        let result = match state {
+            PinState::Low => timeout!(self.pin.wait_for_low(), timeout),
+            PinState::High => timeout!(self.pin.wait_for_high(), timeout),
         };
-        Ok(())
+
+        match result {
+            Some(_) => Ok(()),
+            None => Err(Error::Timeout),
+        }
     }
 }
 
