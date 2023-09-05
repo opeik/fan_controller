@@ -54,7 +54,7 @@
 //!
 //! [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 use bitvec::prelude::*;
-use defmt::debug;
+use defmt::{debug, trace};
 use embedded_hal::digital::{InputPin, OutputPin, PinState};
 use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
 use uom::si::{
@@ -99,15 +99,13 @@ pub enum Error<HalError> {
 /// See: [the datasheet].
 ///
 /// [the datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
-pub struct Dht11<Pin, DebugPin, Delay, HalError>
+pub struct Dht11<Pin, Delay, HalError>
 where
     Pin: InputPin<Error = HalError> + OutputPin<Error = HalError> + Wait,
-    DebugPin: OutputPin<Error = HalError>,
     Delay: HalDelay,
 {
     pin: Pin,
     delay: Delay,
-    debug_pin: DebugPin,
 }
 
 /// Represents [`Dht11`] sensor data.
@@ -139,26 +137,20 @@ impl defmt::Format for Data {
     }
 }
 
-impl<Pin, DebugPin, Delay, HalError> Dht11<Pin, DebugPin, Delay, HalError>
+impl<Pin, Delay, HalError> Dht11<Pin, Delay, HalError>
 where
     Pin: InputPin<Error = HalError> + OutputPin<Error = HalError> + Wait,
-    DebugPin: OutputPin<Error = HalError>,
     Delay: HalDelay,
 {
     /// Creates a new [`Dht11`].
-    pub fn new(pin: Pin, delay: Delay, debug_pin: DebugPin) -> Self {
-        Dht11 {
-            pin,
-            delay,
-            debug_pin,
-        }
+    pub fn new(pin: Pin, delay: Delay) -> Self {
+        Dht11 { pin, delay }
     }
 
     /// Reads data from the sensor.
     pub async fn read(&mut self) -> Result<Data, HalError> {
         debug!("connecting to dht11...");
         self.connect().await?;
-
         debug!("reading from dht11...");
         self.read_data().await
     }
@@ -173,14 +165,12 @@ where
 
         // See: datasheet § 5.2-3; figure 3.
         let timeout = 80 + 10;
-        self.debug_pin.set_high()?;
         self.wait_for(PinState::High, timeout)
             .await
             .map_err(|_| Error::NotPresent)?;
         self.wait_for(PinState::Low, timeout)
             .await
             .map_err(|_| Error::NotPresent)?;
-        self.debug_pin.set_low()?;
 
         Ok(())
     }
@@ -192,20 +182,15 @@ where
             *bit = self.read_bit().await?;
         }
 
-        debug!("read data: {:08b}", data.as_raw_slice());
+        trace!("read data: {:08b}", data.as_raw_slice());
         parse::<HalError>(data.as_bitslice())
     }
 
     /// Reads a bit of data from the sensor.
     async fn read_bit(&mut self) -> Result<bool, HalError> {
         // See: datasheet § 5.3; figure 4.
-        self.debug_pin.set_high()?;
         self.wait_for(PinState::High, 50).await?;
-        self.debug_pin.set_low()?;
-
-        self.debug_pin.set_high()?;
         let (result, duration) = timed!(self.wait_for(PinState::Low, 70));
-        self.debug_pin.set_low()?;
         result?;
 
         // A high level of ~30μ indicates a `0` bit, 70μ indicates a `1` bit.

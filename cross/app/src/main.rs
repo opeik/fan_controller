@@ -36,12 +36,12 @@ async fn main(_spawner: Spawner) {
     info!("pwm initialized!");
 
     info!("waiting for DHT11 to settle...");
-    let mut temp_sensor = Dht11::new(
-        OutputOpenDrain::new(peripherals.PIN_16, Level::High),
-        Delay,
-        Output::new(peripherals.PIN_17, Level::Low),
-    );
+    let temp_pin = OutputOpenDrain::new(peripherals.PIN_16, Level::High);
+    temp_pin.set_low();
     Timer::after(Duration::from_secs(1)).await;
+    temp_pin.set_high();
+
+    let mut temp_sensor = Dht11::new(Delay, Output::new(peripherals.PIN_17, Level::Low));
 
     loop {
         led.toggle();
