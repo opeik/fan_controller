@@ -4,6 +4,9 @@
 #![feature(error_in_core)]
 #![feature(type_alias_impl_trait)]
 
+mod driver;
+mod future;
+
 use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
@@ -12,13 +15,15 @@ use embassy_rp::{
     pwm::{Channel, Config as PwmConfig, Pwm},
 };
 use embassy_time::{Delay, Duration, Timer};
-use fan_controller::{dht::Dht11, fan::FanSpeed};
+use fan_controller::fan::FanSpeed;
 use panic_probe as _;
 use uom::si::{
     f32::{Frequency, Ratio},
     frequency::hertz,
     ratio::percent,
 };
+
+use crate::driver::dht::Dht11;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {

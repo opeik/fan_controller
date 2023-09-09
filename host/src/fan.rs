@@ -3,6 +3,7 @@ use uom::si::{
     frequency::hertz,
 };
 
+
 /// Represents desired fan speed.
 pub struct FanSpeed(pub Ratio);
 

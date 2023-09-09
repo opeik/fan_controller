@@ -37,6 +37,7 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bitvec",
  "cortex-m",
  "cortex-m-rt",
  "defmt",
@@ -53,12 +54,15 @@ dependencies = [
  "embedded-storage",
  "fan_controller",
  "fixed",
+ "futures",
  "heapless",
  "log",
  "panic-probe",
+ "pin-project",
  "pio",
  "reqwest",
  "static_cell",
+ "thiserror-core",
  "uom",
  "url",
 ]
@@ -233,12 +237,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "convert_case"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
-
-[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -410,19 +408,6 @@ checksum = "94a0dfea4063d72e1ba20494dfbc4667f67420869328cf3670b5824a38a22dc1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "derive_more"
-version = "0.99.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
-dependencies = [
- "convert_case",
- "proc-macro2",
- "quote",
- "rustc_version 0.4.0",
  "syn 1.0.109",
 ]
 
@@ -710,13 +695,6 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "defmt",
- "derive_more",
- "either",
- "embassy-time",
- "embedded-hal 1.0.0-rc.1",
- "embedded-hal-async",
- "futures",
- "pin-project",
  "thiserror-core",
  "uom",
 ]

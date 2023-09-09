@@ -5,8 +5,10 @@
         "cross/Cargo.toml",
     ],
     "cSpell.words": [
+        "bitvec",
         "defmt",
         "pico",
-        "ulps"
+        "ulps",
+        "xshell"
     ]
 }
