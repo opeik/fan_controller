@@ -1795,6 +1795,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cortex-m",
+ "data-encoding",
  "defmt",
  "defmt-rtt",
  "defmt-test",
@@ -1814,6 +1815,7 @@ dependencies = [
  "panic-probe",
  "pio",
  "reqwest",
+ "sha2",
  "static_cell",
  "url",
 ]
