@@ -33,7 +33,7 @@
 //! [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 use bitvec::prelude::*;
 use uom::si::{
-    f32::{Ratio, ThermodynamicTemperature},
+    f64::{Ratio, ThermodynamicTemperature},
     ratio::percent,
     thermodynamic_temperature::degree_celsius,
 };
@@ -50,10 +50,10 @@ pub enum Error {
         actual
     )]
     ChecksumMismatch { expected: u8, actual: u8 },
-    #[error("invalid temperature, (expected -50≤x≤50°C, got {0}°C)")]
-    InvalidTemperature(f32),
-    #[error("invalid humidity, (expected 0≤x≤100%, got {0}%)")]
-    InvalidHumidity(f32),
+    #[error("invalid temperature: expected -50≤x≤50°C, got {0}°C")]
+    InvalidTemperature(f64),
+    #[error("invalid humidity: expected 0≤x≤100%, got {0}%")]
+    InvalidHumidity(f64),
 }
 
 /// Represents [`Dht11`] sensor data.
@@ -94,8 +94,8 @@ pub fn decode(data: &BitSlice<u8, Msb0>) -> Result<Data> {
         temperature_frac,
     } = decode_raw(data)?;
 
-    let humidity = fixed_to_f32([humidity, humidity_frac].view_bits());
-    let temperature = fixed_to_f32([temperature, temperature_frac].view_bits());
+    let humidity = fixed_to_f64([humidity, humidity_frac].view_bits());
+    let temperature = fixed_to_f64([temperature, temperature_frac].view_bits());
 
     if !(0.0..=100.0).contains(&humidity) {
         return Err(Error::InvalidHumidity(humidity));
@@ -147,10 +147,10 @@ fn decode_raw(data: &BitSlice<u8, Msb0>) -> Result<RawData> {
 /// |    Integer    |   Fractional  |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
-fn fixed_to_f32(x: &BitSlice<u8, Msb0>) -> f32 {
+fn fixed_to_f64(x: &BitSlice<u8, Msb0>) -> f64 {
     let is_signed = x[0];
-    let integer = x[1..8].load_be::<u8>() as f32;
-    let fractional = x[8..16].load_be::<u8>() as f32;
+    let integer = x[1..8].load_be::<u8>() as f64;
+    let fractional = x[8..16].load_be::<u8>() as f64;
     let sign = if is_signed { -1.0 } else { 1.0 };
     sign * (integer + (fractional / 10.0))
 }
@@ -183,8 +183,8 @@ mod tests {
         assert_eq!(raw_data.temperature_frac, 8);
 
         let data = decode(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 39.3, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.8, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 39.3, ulps <= 4);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.8, ulps <= 4);
 
         Ok(())
     }
@@ -199,8 +199,8 @@ mod tests {
         assert_eq!(raw_data.temperature_frac, 8);
 
         let data = decode(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 39.3, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), -20.8, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 39.3, ulps <= 4);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), -20.8, ulps <= 4);
 
         Ok(())
     }
@@ -235,8 +235,8 @@ mod tests {
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = decode(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 0.0, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 0.0, ulps <= 4);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 4);
 
         // Check the upper boundary: 100%.
         let payload = [0x64, 0x00, 0x14, 0x00, 0x78].view_bits();
@@ -247,8 +247,8 @@ mod tests {
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = decode(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 100.0, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 100.0, ulps <= 4);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 20.0, ulps <= 4);
 
         // Check below the lower boundary.
         assert_eq!(
@@ -275,8 +275,8 @@ mod tests {
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = decode(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), -50.0, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 4);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), -50.0, ulps <= 4);
 
         // Check the upper boundary: 50.0°C.
         let payload = [0x14, 0x00, 0x32, 0x00, 0x46].view_bits();
@@ -287,8 +287,8 @@ mod tests {
         assert_eq!(raw_data.temperature_frac, 0);
 
         let data = decode(payload)?;
-        assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 10);
-        assert_float_eq!(data.temperature.get::<degree_celsius>(), 50.0, ulps <= 10);
+        assert_float_eq!(data.humidity.get::<percent>(), 20.0, ulps <= 4);
+        assert_float_eq!(data.temperature.get::<degree_celsius>(), 50.0, ulps <= 4);
 
         // Check below the lower boundary.
         assert_eq!(

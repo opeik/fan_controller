@@ -7,7 +7,7 @@ use core::{
 use embassy_time::{Duration, Instant};
 use pin_project::pin_project;
 
-/// A wrapper around a [`core::future::Future`] which adds timing data.
+/// A wrapper around [`core::future::Future`] which adds timing data.
 #[pin_project]
 #[must_use = "futures do nothing unless polled"]
 pub struct TimedFuture<Fut>
@@ -71,26 +71,6 @@ pub trait TimedExt: Sized + Future {
 
 impl<F: Future> TimedExt for F {}
 
-/// Polls a future along with a timeout. If the timeout finishes first, returns
-/// `None`, else returns `Some(Future::Output)`.
-macro_rules! timeout {
-    ($future:expr, $timeout:expr) => {{
-        use futures::{
-            future::{self, Either},
-            pin_mut,
-        };
-        let future = $future;
-        let timeout = $timeout;
-        pin_mut!(future);
-        pin_mut!(timeout);
-
-        match future::select(future, timeout).await {
-            Either::Left((v, _)) => Some(v),
-            Either::Right((_, _)) => None,
-        }
-    }};
-}
-
 /// Times the given [`core::future::Future`], returning `(Future::Output,
 /// duration)`.
 macro_rules! timed {
@@ -104,4 +84,3 @@ macro_rules! timed {
 }
 
 pub(crate) use timed;
-pub(crate) use timeout;

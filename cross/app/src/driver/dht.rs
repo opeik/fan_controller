@@ -27,17 +27,18 @@
 //! [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 use bitvec::prelude::*;
 use defmt::{debug, trace};
-use embedded_hal::digital::{InputPin, OutputPin, PinState};
-use embedded_hal_async::{delay::DelayUs as HalDelay, digital::Wait};
+use embassy_rp::gpio;
+use embassy_time::{Duration, Timer};
+use embedded_hal::digital::PinState;
 use fan_controller::decode::{self, dht::Data};
 
-use crate::future::{timed, timeout};
+use crate::future::timed;
 
-type Result<T, E> = core::result::Result<T, Error<E>>;
+type Result<T> = core::result::Result<T, Error>;
 
 /// Represents a sensor error.
 #[derive(Debug, thiserror::Error, defmt::Format)]
-pub enum Error<E> {
+pub enum Error {
     /// The sensor is not present.
     #[error("sensor not present")]
     NotPresent,
@@ -50,9 +51,6 @@ pub enum Error<E> {
     /// A decode error occurred.
     #[error("decode error: {0}")]
     DecodeError(decode::dht::Error),
-    /// A hardware error occurred.
-    #[error("hardware error: {0}")]
-    HardwareError(#[from] E),
 }
 
 /// Represents a DHT11 temperature and humidity sensor.
@@ -60,13 +58,11 @@ pub enum Error<E> {
 /// See: [the datasheet].
 ///
 /// [the datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
-pub struct Dht11<E, Pin, Delay>
+pub struct Dht11<'a, Pin>
 where
-    Pin: InputPin<Error = E> + OutputPin<Error = E> + Wait,
-    Delay: HalDelay,
+    Pin: gpio::Pin,
 {
-    pin: Pin,
-    delay: Delay,
+    pin: gpio::OutputOpenDrain<'a, Pin>,
 }
 
 /// Represents raw [`Dht11`] sensor data.
@@ -78,18 +74,17 @@ struct RawData {
     pub temperature_frac: u8,
 }
 
-impl<E, Pin, Delay> Dht11<E, Pin, Delay>
+impl<'a, Pin> Dht11<'a, Pin>
 where
-    Pin: InputPin<Error = E> + OutputPin<Error = E> + Wait,
-    Delay: HalDelay,
+    Pin: gpio::Pin,
 {
     /// Creates a new [`Dht11`].
-    pub fn new(pin: Pin, delay: Delay) -> Self {
-        Dht11 { pin, delay }
+    pub fn new(pin: gpio::OutputOpenDrain<'a, Pin>) -> Self {
+        Dht11 { pin }
     }
 
     /// Reads data from the sensor.
-    pub async fn read(&mut self) -> Result<Data, E> {
+    pub async fn read(&mut self) -> Result<Data> {
         debug!("connecting to dht11...");
         self.connect().await?;
         debug!("reading from dht11...");
@@ -97,14 +92,14 @@ where
     }
 
     /// Connects to the sensor.
-    async fn connect(&mut self) -> Result<(), E> {
-        const TOLERANCE_US: u32 = 10;
+    async fn connect(&mut self) -> Result<()> {
+        const TOLERANCE_US: u64 = 10;
 
         // See: Datasheet § 5.2; figure 2.
-        self.pin.set_low()?;
-        self.delay.delay_ms(30).await;
-        self.pin.set_high()?;
-        self.delay.delay_us(40).await;
+        self.pin.set_low();
+        Timer::after(Duration::from_micros(30)).await;
+        self.pin.set_high();
+        Timer::after(Duration::from_micros(40)).await;
 
         // See: datasheet § 5.2-3; figure 3.
         let timeout_us = 80 + TOLERANCE_US; // 10μs tolerance.
@@ -119,7 +114,7 @@ where
     }
 
     /// Implements reading data from the sensor.
-    async fn read_data(&mut self) -> Result<Data, E> {
+    async fn read_data(&mut self) -> Result<Data> {
         let mut data = bitarr![u8, Msb0; 0; 40];
         for mut bit in data.iter_mut() {
             *bit = self.read_bit().await?;
@@ -130,8 +125,8 @@ where
     }
 
     /// Reads a bit of data from the sensor.
-    async fn read_bit(&mut self) -> Result<bool, E> {
-        const TOLERANCE_US: u32 = 10;
+    async fn read_bit(&mut self) -> Result<bool> {
+        const TOLERANCE_US: u64 = 10;
 
         // See: datasheet § 5.3; figure 4.
         self.wait_for(PinState::High, 50).await?;
@@ -147,16 +142,16 @@ where
     }
 
     /// Waits for a pin state until the timeout.
-    async fn wait_for(&mut self, state: PinState, timeout_us: u32) -> Result<(), E> {
-        let timeout = self.delay.delay_us(timeout_us);
+    async fn wait_for(&mut self, state: PinState, timeout_us: u64) -> Result<()> {
+        let timeout = Duration::from_micros(timeout_us);
         let result = match state {
-            PinState::Low => timeout!(self.pin.wait_for_low(), timeout),
-            PinState::High => timeout!(self.pin.wait_for_high(), timeout),
+            PinState::Low => embassy_time::with_timeout(timeout, self.pin.wait_for_low()).await,
+            PinState::High => embassy_time::with_timeout(timeout, self.pin.wait_for_high()).await,
         };
 
         match result {
-            Some(_) => Ok(()),
-            None => Err(Error::Timeout),
+            Ok(_) => Ok(()),
+            Err(_) => Err(Error::Timeout),
         }
     }
 }

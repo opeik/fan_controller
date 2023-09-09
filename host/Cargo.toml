@@ -10,7 +10,7 @@ thiserror = { version = "1.0", package = "thiserror-core", default-features = fa
 uom = { version = "0.35", default-features = false, features = [
     "autoconvert",
     "u32",
-    "f32",
+    "f64",
     "si",
 ] }
 bitvec = { version = "1.0", default-features = false, features = ["atomic"] }

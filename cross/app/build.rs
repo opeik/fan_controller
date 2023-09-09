@@ -11,11 +11,13 @@
 use std::{
     env,
     fs::File,
-    io::Write,
+    io::{BufReader, Read, Write},
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use data_encoding::HEXUPPER;
+use sha2::{Digest, Sha256};
 use url::Url;
 
 fn main() -> Result<()> {
@@ -52,7 +54,11 @@ fn download_svd_file() -> Result<()> {
         .parent()
         .context("missing parent")?
         .join("target/thumbv6m-none-eabi/release");
-    download_file(url, path)?;
+    download_file(
+        url,
+        path,
+        "5A046202808F07C660ADE1A4B38AD31D10309EC1ABBAFEA4A0342FC538F626C8",
+    )?;
     Ok(())
 }
 
@@ -64,14 +70,59 @@ fn download_svd_file() -> Result<()> {
 //     Ok(())
 // }
 
-fn download_file<P: AsRef<Path>>(url: Url, parent: P) -> Result<()> {
-    let contents = reqwest::blocking::get(url.clone())?.bytes()?;
+fn download_file<P: AsRef<Path>>(url: Url, parent_dir: P, expected_hash: &str) -> Result<()> {
     let filename = url
         .path_segments()
         .context("missing url")?
         .last()
         .context("missing filename")?;
-    let mut file = File::create(parent.as_ref().join(filename)).context("failed to create file")?;
+    let path = parent_dir.as_ref().join(filename);
+
+    if path.exists() {
+        let actual_hash = file_hash(&path)?;
+        if actual_hash == expected_hash {
+            return Ok(());
+        } else {
+            return Err(anyhow!(
+                "mismatched sha256 hash for `{path:?}`: found `{actual_hash}`, expected `{expected_hash}`"
+            ));
+        }
+    }
+
+    let contents = reqwest::blocking::get(url.clone())?.bytes()?;
+    let actual_hash = hash_reader(contents.as_ref())?;
+    if actual_hash != expected_hash {
+        return Err(anyhow!(
+            "mismatched sha256 hash for `{path:?}`: found `{actual_hash}`, expected `{expected_hash}`"
+        ));
+    }
+
+    let mut file =
+        File::create(parent_dir.as_ref().join(filename)).context("failed to create file")?;
     file.write_all(&contents)?;
+
     Ok(())
+}
+
+fn file_hash<P: AsRef<Path>>(path: P) -> Result<String> {
+    let file = File::open(path)?;
+    hash_reader(file)
+}
+
+fn hash_reader<R: Read>(reader: R) -> Result<String> {
+    let mut reader = BufReader::new(reader);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 1024];
+
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+
+        hasher.update(&buffer[..count]);
+    }
+
+    let digest = hasher.finalize();
+    Ok(HEXUPPER.encode(digest.as_ref()))
 }

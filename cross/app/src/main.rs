@@ -11,19 +11,19 @@ use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    gpio::{Level, Output, OutputOpenDrain},
-    pwm::{Channel, Config as PwmConfig, Pwm},
+    gpio::{self, Level, Output, OutputOpenDrain},
+    pwm::{self},
 };
 use embassy_time::{Delay, Duration, Timer};
-use fan_controller::fan::FanSpeed;
+use fan_controller::fan::Speed;
 use panic_probe as _;
 use uom::si::{
-    f32::{Frequency, Ratio},
+    f64::{Frequency, Ratio},
     frequency::hertz,
     ratio::percent,
 };
 
-use crate::driver::dht::Dht11;
+use crate::driver::{dht::Dht11, fan::Fan};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -31,16 +31,18 @@ async fn main(_spawner: Spawner) {
     let mut led = Output::new(peripherals.PIN_25, Level::Low);
     info!("peripherals initialized!");
 
-    let mut pwm = Pwm::new_output_b(
-        peripherals.PWM_CH7,
-        peripherals.PIN_15,
-        PwmConfig::default(),
+    let mut fan = Fan::new(
+        pwm::Pwm::new_output_b(
+            peripherals.PWM_CH7,
+            peripherals.PIN_15,
+            pwm::Config::default(),
+        ),
+        gpio::Input::new(peripherals.PIN_17, gpio::Pull::None),
     );
 
-    set_fan_speed(&mut pwm, FanSpeed(Ratio::new::<percent>(0.0)));
-    info!("pwm initialized!");
+    fan.set_fan_speed(Speed());
 
-    let mut temp_sensor = Dht11::new(OutputOpenDrain::new(peripherals.PIN_16, Level::High), Delay);
+    let mut temp_sensor = Dht11::new(OutputOpenDrain::new(peripherals.PIN_16, Level::High));
     info!("waiting for DHT11 to initialize...");
     Timer::after(Duration::from_secs(1)).await;
 
@@ -54,15 +56,4 @@ async fn main(_spawner: Spawner) {
 
         Timer::after(Duration::from_secs(1)).await;
     }
-}
-
-fn set_fan_speed<T: Channel>(pwm: &mut Pwm<T>, fan_speed: FanSpeed) {
-    let params = fan_speed.to_pwm_params(Frequency::new::<hertz>(125_000_000.0));
-
-    let mut config = PwmConfig::default();
-    config.top = params.top;
-    config.compare_a = params.compare;
-    config.compare_b = params.compare;
-
-    pwm.set_config(&config)
 }
