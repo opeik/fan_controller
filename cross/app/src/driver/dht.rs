@@ -116,12 +116,12 @@ where
     /// Implements reading data from the sensor.
     async fn read_data(&mut self) -> Result<Data> {
         let mut data = bitarr![u8, Msb0; 0; 40];
-        for mut bit in data.iter_mut() {
+        for mut bit in &mut data {
             *bit = self.read_bit().await?;
         }
 
         trace!("read data: {:08b}", data.as_raw_slice());
-        decode::dht::decode(data.as_bitslice()).map_err(|e| Error::DecodeError(e))
+        decode::dht::decode(data.as_bitslice()).map_err(Error::DecodeError)
     }
 
     /// Reads a bit of data from the sensor.
@@ -150,7 +150,7 @@ where
         };
 
         match result {
-            Ok(_) => Ok(()),
+            Ok(()) => Ok(()),
             Err(_) => Err(Error::Timeout),
         }
     }

@@ -32,11 +32,7 @@
 //!
 //! [datasheet]: https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
 use bitvec::prelude::*;
-use uom::si::{
-    f64::{Ratio, ThermodynamicTemperature},
-    ratio::percent,
-    thermodynamic_temperature::degree_celsius,
-};
+use uom::si::{self, ratio::percent, thermodynamic_temperature::degree_celsius};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -60,9 +56,9 @@ pub enum Error {
 #[derive(Default, Debug, PartialEq)]
 pub struct Data {
     /// Current humidity.
-    pub humidity: Ratio,
+    pub humidity: si::f64::Ratio,
     /// Current temperature.
-    pub temperature: ThermodynamicTemperature,
+    pub temperature: si::f64::ThermodynamicTemperature,
 }
 
 /// Represents raw [`Dht11`] sensor data.
@@ -81,7 +77,7 @@ impl defmt::Format for Data {
             "Data {{ humidity: {}%, temperature: {}°C }}",
             self.humidity.get::<percent>(),
             self.temperature.get::<degree_celsius>(),
-        )
+        );
     }
 }
 
@@ -106,8 +102,8 @@ pub fn decode(data: &BitSlice<u8, Msb0>) -> Result<Data> {
     }
 
     Ok(Data {
-        humidity: Ratio::new::<percent>(humidity),
-        temperature: ThermodynamicTemperature::new::<degree_celsius>(temperature),
+        humidity: si::f64::Ratio::new::<percent>(humidity),
+        temperature: si::f64::ThermodynamicTemperature::new::<degree_celsius>(temperature),
     })
 }
 
@@ -149,8 +145,8 @@ fn decode_raw(data: &BitSlice<u8, Msb0>) -> Result<RawData> {
 /// ```
 fn fixed_to_f64(x: &BitSlice<u8, Msb0>) -> f64 {
     let is_signed = x[0];
-    let integer = x[1..8].load_be::<u8>() as f64;
-    let fractional = x[8..16].load_be::<u8>() as f64;
+    let integer = f64::from(x[1..8].load_be::<u8>());
+    let fractional = f64::from(x[8..16].load_be::<u8>());
     let sign = if is_signed { -1.0 } else { 1.0 };
     sign * (integer + (fractional / 10.0))
 }
@@ -164,6 +160,7 @@ mod tests {
 
     /// Converts a [`i8`] to a binary [`u8`].
     fn from_i8(x: i8) -> u8 {
+        #[allow(clippy::cast_sign_loss)]
         let mut integer = x.abs().to_be() as u8;
         let bits = integer.view_bits_mut::<Msb0>();
         if x.is_negative() {

@@ -741,6 +741,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "defmt",
+ "heapless",
  "thiserror-core",
  "uom",
 ]
