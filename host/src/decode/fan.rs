@@ -11,11 +11,12 @@ pub enum Error {
     /// The checksum is mismatched.
     #[error("invalid fan power: expected 0≤x≤100%, got {0}%")]
     InvalidPower(f64),
-    #[error("not enough samples: expected x >= 2 samples, got {0} samples")]
+    #[error("not enough samples: expected x≥2, got {0} samples")]
     NotEnoughSamples(usize),
 }
 
 /// Represents desired fan power.
+#[derive(derive_more::Deref)]
 pub struct Power(si::f64::Ratio);
 
 /// Represents RP2040 PWM parameters.
@@ -26,7 +27,7 @@ pub struct RpPwmConfig {
 }
 
 impl Power {
-    const MAX_SAMPLES: usize = 30;
+    const NUM_SAMPLES: usize = 30;
 
     pub fn new(ratio: si::f64::Ratio) -> Result<Self> {
         let inner = ratio.get::<percent>();

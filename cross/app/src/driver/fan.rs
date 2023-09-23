@@ -6,7 +6,7 @@ use embassy_rp::{
 use embassy_time::Delay;
 use embedded_hal_async::delay::DelayUs;
 pub use fan_controller::decode::fan::Power;
-use uom::si::{self, frequency::hertz, time::millisecond};
+use uom::si::{self, frequency::hertz, ratio::percent, time::millisecond};
 
 type Result<T> = core::result::Result<T, Error>;
 
@@ -41,6 +41,7 @@ where
     }
 
     pub fn set_fan_power(&mut self, power: &Power) {
+        info!("setting fan to {}% power", power.inner().get::<percent>());
         let params = power.pwm_config(si::f64::Frequency::new::<hertz>(f64::from(
             clocks::clk_sys_freq(),
         )));

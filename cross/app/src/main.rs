@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(async_fn_in_trait)]
-#![feature(error_in_core)]
-#![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait, error_in_core, type_alias_impl_trait)]
 #![warn(clippy::suspicious, clippy::complexity, clippy::perf, clippy::pedantic)]
 #![allow(clippy::used_underscore_binding)]
 
@@ -31,9 +29,9 @@ async fn main(_spawner: Spawner) {
     info!("peripherals initialized!");
 
     let mut fan = Fan::new(
-        pwm::Pwm::new_output_a(
-            peripherals.PWM_CH1,
-            peripherals.PIN_2,
+        pwm::Pwm::new_output_b(
+            peripherals.PWM_CH7,
+            peripherals.PIN_15,
             pwm::Config::default(),
         ),
         pwm::Pwm::new_input(
@@ -45,9 +43,7 @@ async fn main(_spawner: Spawner) {
     );
 
     let mut _temp_sensor = Dht11::new(gpio::OutputOpenDrain::new(peripherals.PIN_16, Level::High));
-    info!("waiting for DHT11 to initialize...");
-    Timer::after(Duration::from_secs(1)).await;
-    fan.set_fan_power(&Power::new(Ratio::new::<percent>(50.0)).unwrap());
+    fan.set_fan_power(&Power::new(Ratio::new::<percent>(100.0)).unwrap());
 
     loop {
         led.toggle();

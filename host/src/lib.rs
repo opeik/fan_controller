@@ -4,3 +4,4 @@
 #![allow(clippy::missing_errors_doc, clippy::similar_names)]
 
 pub mod decode;
+pub mod fan_curve;

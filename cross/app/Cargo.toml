@@ -22,7 +22,7 @@ embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/embassy-rs
     "defmt",
 ] }
 
-embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy.git", features = [
+embassy-sync = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy.git", features = [
     "defmt",
 ] }
 

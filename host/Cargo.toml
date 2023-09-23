@@ -16,6 +16,11 @@ uom = { version = "0.35", default-features = false, features = [
 bitvec = { version = "1.0", default-features = false, features = ["atomic"] }
 defmt = "0.3"
 heapless = "0.7"
+enterpolation = { version = "0.2", default-features = false, features = [
+    "libm",
+    "bspline",
+] }
+derive_more = "0.99"
 
 [dev-dependencies]
 anyhow = "1.0"
