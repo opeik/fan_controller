@@ -6,10 +6,13 @@
     ],
     "cSpell.words": [
         "bitvec",
+        "bspline",
         "defmt",
         "enterpolation",
         "Gpio",
         "pico",
+        "powf",
+        "repr",
         "ulps",
         "xshell"
     ]

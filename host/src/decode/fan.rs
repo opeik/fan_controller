@@ -1,7 +1,6 @@
-use core::time::Duration;
+use uom::si::{self, frequency::hertz, ratio::percent};
 
-use heapless::Vec;
-use uom::si::{self, f64::Frequency, frequency::hertz, ratio::percent};
+use crate::units::{Frequency, Ratio};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -16,20 +15,18 @@ pub enum Error {
 }
 
 /// Represents desired fan power.
-#[derive(derive_more::Deref)]
-pub struct Power(si::f64::Ratio);
+#[derive(Default, derive_more::Deref)]
+pub struct Power(Ratio);
 
 /// Represents RP2040 PWM parameters.
-#[derive(Debug, PartialEq, defmt::Format)]
+#[derive(Debug, Copy, Clone, PartialEq, defmt::Format)]
 pub struct RpPwmConfig {
     pub top: u16,
     pub compare: u16,
 }
 
 impl Power {
-    const NUM_SAMPLES: usize = 30;
-
-    pub fn new(ratio: si::f64::Ratio) -> Result<Self> {
+    pub fn new(ratio: Ratio) -> Result<Self> {
         let inner = ratio.get::<percent>();
 
         if (0.0..=100.0).contains(&inner) {
@@ -40,9 +37,9 @@ impl Power {
     }
 
     #[must_use]
-    pub fn pwm_config(&self, clock: si::f64::Frequency) -> RpPwmConfig {
+    pub fn pwm_config(&self, clock: Frequency) -> RpPwmConfig {
         // As specified by Intel "4-Wire Pulse Width Modulation (PWM) Controlled Fans".
-        let fan_pwm_signal = si::f64::Frequency::new::<hertz>(25_000.0);
+        let fan_pwm_signal = Frequency::new::<hertz>(25_000.0);
         let fan_speed = self.0;
         let top = clock / fan_pwm_signal;
         let compare = top * fan_speed;
@@ -52,26 +49,6 @@ impl Power {
             top: top.value as u16,
             compare: compare.value as u16,
         }
-    }
-
-    pub fn fan_freq<'a, I: IntoIterator<Item = &'a Duration>>(
-        samples: I,
-    ) -> Result<si::f64::Frequency> {
-        const SAMPLES_PER_ROTATION: f64 = 2.0;
-        let samples = samples
-            .into_iter()
-            .collect::<Vec<_, { Self::MAX_SAMPLES }>>();
-        let count = samples.iter().count();
-
-        if count < 2 {
-            return Err(Error::NotEnoughSamples(count));
-        }
-
-        let sum = samples.iter().copied().sum::<Duration>().as_secs_f64();
-        #[allow(clippy::cast_precision_loss)]
-        let avg = sum / count as f64;
-        let frequency = (1.0 / avg) / SAMPLES_PER_ROTATION;
-        Ok(Frequency::new::<hertz>(frequency))
     }
 }
 

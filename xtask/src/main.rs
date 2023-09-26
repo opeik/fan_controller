@@ -11,17 +11,17 @@ fn main() -> Result<()> {
 
     match &args[..] {
         ["run"] => run(),
-        ["build", "all"] => build_all(),
+        ["build"] => build_all(),
         ["build", "host"] => build_host(),
         ["build", "target"] => build_target(),
-        ["test", "all"] => test_all(),
+        ["test"] => test_all(),
         ["test", "host"] => test_host(),
         ["test", "target"] => test_target(),
-        ["clean", "all"] => clean_all(),
+        ["clean"] => clean_all(),
         ["clean", "host"] => clean_host(),
         ["clean", "target"] => clean_target(),
         _ => {
-            println!("USAGE cargo xtask <build|test|clean> [all|host|target]");
+            println!("USAGE cargo xtask <build|test|clean> [host|target]");
             Ok(())
         }
     }

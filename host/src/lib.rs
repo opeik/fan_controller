@@ -3,5 +3,6 @@
 #![warn(clippy::suspicious, clippy::complexity, clippy::perf, clippy::pedantic)]
 #![allow(clippy::missing_errors_doc, clippy::similar_names)]
 
+pub use uom::si::f64 as units;
 pub mod decode;
 pub mod fan_curve;

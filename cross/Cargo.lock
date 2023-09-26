@@ -53,8 +53,9 @@ dependencies = [
  "embedded-hal-async",
  "embedded-io-async",
  "embedded-storage",
+ "enterpolation",
  "fan_controller",
- "fixed",
+ "fixed 1.24.0",
  "futures",
  "heapless",
  "log",
@@ -599,7 +600,7 @@ dependencies = [
  "embedded-io-async",
  "embedded-storage",
  "embedded-storage-async",
- "fixed",
+ "fixed 1.24.0",
  "futures",
  "nb 1.1.0",
  "pio",
@@ -778,7 +779,9 @@ dependencies = [
  "defmt",
  "derive_more",
  "enterpolation",
+ "fixed 2.0.0-alpha.12",
  "heapless",
+ "num-traits",
  "thiserror-core",
  "uom",
 ]
@@ -799,6 +802,17 @@ dependencies = [
  "bytemuck",
  "half",
  "typenum",
+]
+
+[[package]]
+name = "fixed"
+version = "2.0.0-alpha.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cb9922e700f729a374059fb5372aaca7ce2ce47426ab6e97897ec7d8978fab8"
+dependencies = [
+ "az",
+ "bytemuck",
+ "half",
 ]
 
 [[package]]
@@ -1854,7 +1868,7 @@ dependencies = [
  "embedded-hal-async",
  "embedded-io-async",
  "embedded-storage",
- "fixed",
+ "fixed 1.24.0",
  "heapless",
  "log",
  "panic-probe",

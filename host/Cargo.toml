@@ -21,6 +21,9 @@ enterpolation = { version = "0.2", default-features = false, features = [
     "bspline",
 ] }
 derive_more = "0.99"
+num-traits = { version = "0.2", default-features = false }
+fixed = "2.0.0-alpha.12"
+
 
 [dev-dependencies]
 anyhow = "1.0"
