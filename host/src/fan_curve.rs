@@ -93,7 +93,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_curve() -> Result<()> {
+    fn sample_curve() -> Result<()> {
         let curve = FanCurve::new()?;
 
         let actual_samples = (0..=100)

@@ -20,8 +20,11 @@ fn main() -> Result<()> {
         ["clean"] => clean_all(),
         ["clean", "host"] => clean_host(),
         ["clean", "target"] => clean_target(),
+        ["update"] => update_all(),
+        ["update", "host"] => update_host(),
+        ["update", "target"] => update_target(),
         _ => {
-            println!("USAGE cargo xtask <build|test|clean> [host|target]");
+            println!("USAGE cargo xtask <build|test|clean|update> [host|target]");
             Ok(())
         }
     }
@@ -84,6 +87,24 @@ fn clean_host() -> Result<()> {
 fn clean_target() -> Result<()> {
     let _p = xshell::pushd(root_dir().join("cross"))?;
     cmd!("cargo clean").run()?;
+    Ok(())
+}
+
+fn update_all() -> Result<()> {
+    clean_host()?;
+    clean_target()?;
+    Ok(())
+}
+
+fn update_host() -> Result<()> {
+    let _p = xshell::pushd(root_dir())?;
+    cmd!("cargo update").run()?;
+    Ok(())
+}
+
+fn update_target() -> Result<()> {
+    let _p = xshell::pushd(root_dir().join("cross"))?;
+    cmd!("cargo update").run()?;
     Ok(())
 }
 

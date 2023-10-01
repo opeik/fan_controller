@@ -62,7 +62,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn to_pwm_params() {
+    fn fan_power_to_pwm_config() {
         assert_eq!(
             Power(Ratio::new::<percent>(0.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
             RpPwmConfig {

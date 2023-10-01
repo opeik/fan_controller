@@ -47,7 +47,6 @@ embassy-futures = { version = "0.1.0", git = "https://github.com/embassy-rs/emba
 defmt = "0.3"
 defmt-rtt = "0.4"
 defmt-test = "0.3"
-fixed = "1.23.1"
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 # cortex-m-rt = "0.7.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
