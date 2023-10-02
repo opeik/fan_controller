@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use xshell::cmd;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -17,17 +17,14 @@ fn main() -> Result<()> {
         ["test"] => test_all(),
         ["test", "host"] => test_host(),
         ["test", "target"] => test_target(),
-        ["clean"] => clean_all(),
-        ["clean", "host"] => clean_host(),
-        ["clean", "target"] => clean_target(),
-        ["update"] => update_all(),
-        ["update", "host"] => update_host(),
-        ["update", "target"] => update_target(),
-        _ => {
-            println!("USAGE cargo xtask <build|test|clean|update> [host|target]");
-            Ok(())
-        }
-    }
+        _ => match *(args.last().context("missing target")?) {
+            "host" => subcommand_host(&args),
+            "target" => subcommand_target(&args),
+            _ => subcommand_all(&args),
+        },
+    }?;
+
+    Ok(())
 }
 
 fn run() -> Result<()> {
@@ -72,39 +69,21 @@ fn test_target() -> Result<()> {
     Ok(())
 }
 
-fn clean_all() -> Result<()> {
-    clean_host()?;
-    clean_target()?;
+fn subcommand_all(args: &[&str]) -> Result<()> {
+    subcommand_host(args)?;
+    subcommand_target(args)?;
     Ok(())
 }
 
-fn clean_host() -> Result<()> {
+fn subcommand_host(args: &[&str]) -> Result<()> {
     let _p = xshell::pushd(root_dir())?;
-    cmd!("cargo clean").run()?;
+    cmd!("cargo {args...} --workspace").run()?;
     Ok(())
 }
 
-fn clean_target() -> Result<()> {
+fn subcommand_target(args: &[&str]) -> Result<()> {
     let _p = xshell::pushd(root_dir().join("cross"))?;
-    cmd!("cargo clean").run()?;
-    Ok(())
-}
-
-fn update_all() -> Result<()> {
-    clean_host()?;
-    clean_target()?;
-    Ok(())
-}
-
-fn update_host() -> Result<()> {
-    let _p = xshell::pushd(root_dir())?;
-    cmd!("cargo update").run()?;
-    Ok(())
-}
-
-fn update_target() -> Result<()> {
-    let _p = xshell::pushd(root_dir().join("cross"))?;
-    cmd!("cargo update").run()?;
+    cmd!("cargo {args...} --workspace").run()?;
     Ok(())
 }
 

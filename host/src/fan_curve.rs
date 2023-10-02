@@ -36,9 +36,9 @@ pub struct FanCurve(Clamp<BSpline<Knots, Elements, Space>>);
 impl FanCurve {
     pub fn new() -> Result<Self> {
         let curve = Self::default_curve()?;
-        let (temps, fan_powers) = Self::unzip_curve(curve);
+        let (temps, fan_speeds) = Self::unzip_curve(curve);
         let curve = BSpline::builder()
-            .elements(fan_powers.into_array().map_err(|_| Error::HeaplessError)?)
+            .elements(fan_speeds.into_array().map_err(|_| Error::HeaplessError)?)
             .knots(temps.into_array().map_err(|_| Error::HeaplessError)?)
             .constant::<CURVE_SIZE>()
             .build()
@@ -47,13 +47,13 @@ impl FanCurve {
         Ok(Self(curve))
     }
 
-    fn default_curve() -> Result<Vec<(ThermodynamicTemperature, fan::Power), CURVE_SIZE>> {
+    fn default_curve() -> Result<Vec<(ThermodynamicTemperature, fan::Speed), CURVE_SIZE>> {
         [(20.0, 30.0), (65.0, 100.0)]
             .into_iter()
-            .map(|(temp, fan_power)| {
+            .map(|(temp, fan_speed)| {
                 Ok((
                     ThermodynamicTemperature::new::<degree_celsius>(temp),
-                    fan::Power::new(Ratio::new::<percent>(fan_power))?,
+                    fan::Speed::new(Ratio::new::<percent>(fan_speed))?,
                 ))
             })
             .collect::<Result<Vec<_, CURVE_SIZE>>>()
@@ -61,16 +61,16 @@ impl FanCurve {
 
     fn unzip_curve<T>(collection: T) -> (Vec<f64, CURVE_SIZE>, Vec<f64, CURVE_SIZE>)
     where
-        T: IntoIterator<Item = (ThermodynamicTemperature, fan::Power)>,
+        T: IntoIterator<Item = (ThermodynamicTemperature, fan::Speed)>,
     {
         collection
             .into_iter()
-            .map(|(temp, fan_power)| (temp.get::<degree_celsius>(), fan_power.get::<percent>()))
+            .map(|(temp, fan_speed)| (temp.get::<degree_celsius>(), fan_speed.get::<percent>()))
             .unzip()
     }
 
-    pub fn sample(&self, temp: ThermodynamicTemperature) -> Result<fan::Power> {
-        Ok(fan::Power::new(Ratio::new::<percent>(
+    pub fn sample(&self, temp: ThermodynamicTemperature) -> Result<fan::Speed> {
+        Ok(fan::Speed::new(Ratio::new::<percent>(
             self.0.gen(temp.get::<degree_celsius>()),
         ))?)
     }

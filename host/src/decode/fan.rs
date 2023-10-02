@@ -1,22 +1,22 @@
-use uom::si::{self, frequency::hertz, ratio::percent};
+use uom::si::{frequency::hertz, ratio::percent};
 
 use crate::units::{Frequency, Ratio};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Represents a fan error.
+/// Represents a fan decoding error.
 #[derive(Debug, PartialEq, thiserror::Error, defmt::Format)]
 pub enum Error {
     /// The checksum is mismatched.
-    #[error("invalid fan power: expected 0≤x≤100%, got {0}%")]
-    InvalidPower(f64),
+    #[error("invalid fan speed: expected 0≤x≤100%, got {0}%")]
+    InvalidSpeed(f64),
     #[error("not enough samples: expected x≥2, got {0} samples")]
     NotEnoughSamples(usize),
 }
 
-/// Represents desired fan power.
+/// Represents desired fan speed.
 #[derive(Default, derive_more::Deref)]
-pub struct Power(Ratio);
+pub struct Speed(Ratio);
 
 /// Represents RP2040 PWM parameters.
 #[derive(Debug, Copy, Clone, PartialEq, defmt::Format)]
@@ -25,14 +25,14 @@ pub struct RpPwmConfig {
     pub compare: u16,
 }
 
-impl Power {
+impl Speed {
     pub fn new(ratio: Ratio) -> Result<Self> {
         let inner = ratio.get::<percent>();
 
         if (0.0..=100.0).contains(&inner) {
             Ok(Self(ratio))
         } else {
-            Err(Error::InvalidPower(inner))
+            Err(Error::InvalidSpeed(inner))
         }
     }
 
@@ -62,9 +62,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fan_power_to_pwm_config() {
+    fn fan_speed_to_pwm_config() {
         assert_eq!(
-            Power(Ratio::new::<percent>(0.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
+            Speed(Ratio::new::<percent>(0.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
             RpPwmConfig {
                 top: 5000,
                 compare: 0,
@@ -72,7 +72,7 @@ mod tests {
         );
 
         assert_eq!(
-            Power(Ratio::new::<percent>(50.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
+            Speed(Ratio::new::<percent>(50.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
             RpPwmConfig {
                 top: 5000,
                 compare: 2500,
@@ -80,7 +80,7 @@ mod tests {
         );
 
         assert_eq!(
-            Power(Ratio::new::<percent>(100.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
+            Speed(Ratio::new::<percent>(100.0)).pwm_config(Frequency::new::<hertz>(125_000_000.0)),
             RpPwmConfig {
                 top: 5000,
                 compare: 5000,

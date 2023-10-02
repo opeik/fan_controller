@@ -1,115 +1,152 @@
-use core::ops::RangeInclusive;
-
-use bitvec::{prelude::*, slice::BitSlice};
-use fixed::FixedI16;
 use uom::si::thermodynamic_temperature::degree_celsius;
 
 use crate::units::ThermodynamicTemperature;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Represents a MCP9808 error.
+/// Represents a MCP9808 decoding error.
 #[derive(Debug, PartialEq, thiserror::Error, defmt::Format)]
 pub enum Error {
     #[error("invalid temperature: expected –40°C≤x≤125°C, got {0}°C")]
-    InvalidTemp(f64),
+    InvalidTemperature(f64),
 }
 
 /// Represents MCP9808 data.
 #[derive(Debug, Copy, Clone, defmt::Format)]
 pub enum Data {
-    Temp(#[defmt(Debug2Format)] ThermodynamicTemperature),
+    Temperature(#[defmt(Debug2Format)] ThermodynamicTemperature),
 }
 
-type RawTemp = FixedI16<4>;
+pub mod raw {
+    use core::ops::RangeInclusive;
 
-/// Represents raw MCP9808 data.
-#[derive(Debug, Copy, Clone)]
-enum RawData {
-    Temp(RawTemp),
-}
+    use bitvec::prelude::*;
+    use fixed::FixedI16;
 
-/// Represents a MCP9808 payload.
-pub enum Payload<'a> {
-    Temp(&'a BitSlice<u8, Msb0>),
-}
+    use super::{Error, Result};
 
-const PAYLOAD_SIZE: usize = 2;
+    pub type Temperature = FixedI16<4>;
+    pub type TemperaturePayload = BitArray<[u8; 2], Msb0>;
 
-/// Decodes a raw [`mcp9808`] payload.
-pub fn decode(payload: &Payload) -> Result<Data> {
-    // –40°C to +125°C
-    Ok(match decode_raw(payload)? {
-        RawData::Temp(v) => Data::Temp(ThermodynamicTemperature::new::<degree_celsius>(v.to_num())),
-    })
-}
-
-/// Decodes a raw [`mcp9808`] payload.
-fn decode_raw(payload: &Payload) -> Result<RawData> {
-    Ok(match payload {
-        Payload::Temp(v) => RawData::Temp(decode_raw_temp(v)?),
-    })
-}
-
-fn decode_raw_temp(payload: &BitSlice<u8, Msb0>) -> Result<RawTemp> {
-    const SIGN_BIT: usize = 3;
-    const NUMERIC_BITS: RangeInclusive<usize> = 4..=15;
-
-    let sign = if payload[SIGN_BIT] { -1 } else { 1 };
-    let mut bits = BitArray::<[u8; PAYLOAD_SIZE], Msb0>::ZERO;
-    bits[NUMERIC_BITS].copy_from_bitslice(&payload[NUMERIC_BITS]);
-    let temp = RawTemp::from_be_bytes(bits.into_inner()) * sign;
-
-    if !(-40.0..=125.0).contains(&temp.to_num::<f64>()) {
-        return Err(Error::InvalidTemp(temp.to_num()));
+    /// Represents raw MCP9808 data.
+    #[derive(Debug, Copy, Clone)]
+    pub enum Data {
+        Temperature(Temperature),
     }
 
-    Ok(temp)
+    /// Represents a MCP9808 payload.
+    #[derive(Debug, Copy, Clone)]
+    pub enum Payload {
+        Temperature(TemperaturePayload),
+    }
+
+    /// Decodes a raw MCP9808 payload.
+    pub fn decode(payload: Payload) -> Result<Data> {
+        Ok(match payload {
+            Payload::Temperature(v) => Data::Temperature(decode_temperature(v)?),
+        })
+    }
+
+    /// Decodes a raw MCP9808 temperature payload.
+    pub fn decode_temperature(payload: TemperaturePayload) -> Result<Temperature> {
+        const SIGN_BIT: usize = 3;
+        const NUMERIC_BITS: RangeInclusive<usize> = 4..=15;
+
+        let sign = if payload[SIGN_BIT] { -1 } else { 1 };
+        let mut bits = TemperaturePayload::ZERO;
+        bits[NUMERIC_BITS].copy_from_bitslice(&payload[NUMERIC_BITS]);
+        let temp = Temperature::from_be_bytes(bits.into_inner()) * sign;
+
+        if !(-40.0..=125.0).contains(&temp.to_num::<f64>()) {
+            return Err(Error::InvalidTemperature(temp.to_num()));
+        }
+
+        Ok(temp)
+    }
+}
+
+/// Decodes a raw MCP9808 payload.
+pub fn decode(payload: raw::Payload) -> Result<Data> {
+    Ok(match raw::decode(payload)? {
+        raw::Data::Temperature(v) => {
+            Data::Temperature(ThermodynamicTemperature::new::<degree_celsius>(v.to_num()))
+        }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    mod decode_raw {
+    mod temp {
         use super::*;
 
-        fn test_decode(payload: [u8; 2], raw_temp: RawTemp) {
+        fn assert_temp_eq(payload: [u8; 2], raw_temp: raw::Temperature) {
             assert_eq!(
                 raw_temp,
-                decode_raw_temp(BitSlice::<_, Msb0>::from_slice(&payload)).unwrap()
+                raw::decode_temperature(raw::TemperaturePayload::from(payload)).unwrap()
             );
         }
 
         #[test]
         fn zero_celsius() {
-            test_decode([0b0000_0000, 0b0000_0000], RawTemp::from_num(0.0));
+            assert_temp_eq([0b0000_0000, 0b0000_0000], raw::Temperature::from_num(0.0));
         }
 
         #[test]
         fn slightly_above_zero_celsius() {
-            test_decode([0b0000_0000, 0b0000_0001], RawTemp::from_num(0.062));
-            test_decode([0b0000_0000, 0b0000_0010], RawTemp::from_num(0.125));
-            test_decode([0b0000_0000, 0b0000_1000], RawTemp::from_num(0.500));
-            test_decode([0b0000_0000, 0b0000_1010], RawTemp::from_num(0.625));
+            assert_temp_eq(
+                [0b0000_0000, 0b0000_0001],
+                raw::Temperature::from_num(0.062),
+            );
+            assert_temp_eq(
+                [0b0000_0000, 0b0000_0010],
+                raw::Temperature::from_num(0.125),
+            );
+            assert_temp_eq(
+                [0b0000_0000, 0b0000_1000],
+                raw::Temperature::from_num(0.500),
+            );
+            assert_temp_eq(
+                [0b0000_0000, 0b0000_1010],
+                raw::Temperature::from_num(0.625),
+            );
         }
 
         #[test]
         fn slightly_below_zero_celsius() {
-            test_decode([0b0001_0000, 0b0000_0001], RawTemp::from_num(-0.062));
-            test_decode([0b0001_0000, 0b0000_0010], RawTemp::from_num(-0.125));
-            test_decode([0b0001_0000, 0b0000_1000], RawTemp::from_num(-0.500));
-            test_decode([0b0001_0000, 0b0000_1010], RawTemp::from_num(-0.625));
+            assert_temp_eq(
+                [0b0001_0000, 0b0000_0001],
+                raw::Temperature::from_num(-0.062),
+            );
+            assert_temp_eq(
+                [0b0001_0000, 0b0000_0010],
+                raw::Temperature::from_num(-0.125),
+            );
+            assert_temp_eq(
+                [0b0001_0000, 0b0000_1000],
+                raw::Temperature::from_num(-0.500),
+            );
+            assert_temp_eq(
+                [0b0001_0000, 0b0000_1010],
+                raw::Temperature::from_num(-0.625),
+            );
         }
 
         #[test]
         fn above_zero_celsius() {
-            test_decode([0b0000_0001, 0b1001_0100], RawTemp::from_num(25.250));
+            assert_temp_eq(
+                [0b0000_0001, 0b1001_0100],
+                raw::Temperature::from_num(25.250),
+            );
         }
 
         #[test]
         fn below_zero_celsius() {
-            test_decode([0b0001_0001, 0b1001_0100], RawTemp::from_num(-25.250));
+            assert_temp_eq(
+                [0b0001_0001, 0b1001_0100],
+                raw::Temperature::from_num(-25.250),
+            );
         }
     }
 }

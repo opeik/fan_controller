@@ -1,58 +1,57 @@
-use embassy_rp::{gpio, pwm};
-use fan_controller::{
-    decode,
-    fan_curve::{self, FanCurve},
-};
+use embassy_rp::{i2c, pwm};
+use fan_controller::fan_curve::{self, FanCurve};
 
-use crate::driver::{self, fan::Fan};
+use crate::driver::{self, fan::Fan, mcp9808::Mcp9808};
 
 type Result<T> = core::result::Result<T, Error>;
 
 /// Represents a sensor error.
 #[derive(Debug, thiserror::Error, defmt::Format)]
 pub enum Error {
+    /// A fan driver error occurred.
+    #[error("temperature sensor driver error: {0}")]
+    TempSensorError(#[from] driver::mcp9808::Error),
     /// A fan decode error occurred.
-    #[error("fan decode error: {0}")]
-    FanDecodeError(#[from] decode::fan::Error),
+    #[error("fan driver error: {0}")]
+    FanDecodeError(#[from] driver::fan::Error),
     /// A fan curve error occurred.
     #[error("fan curve error: {0}")]
     FanCurveError(#[from] fan_curve::Error),
 }
 
-pub struct FanControl<'a, ControlPin, TachometerPin>
+pub struct FanControl<'a, ControlChannel, TachometerChannel, SensorI2C>
 where
-    ControlPin: pwm::Channel,
-    TachometerPin: pwm::Channel,
+    ControlChannel: pwm::Channel,
+    TachometerChannel: pwm::Channel,
+    SensorI2C: i2c::Instance,
 {
-    fan: Fan<'a, ControlPin, TachometerPin>,
+    fan: Fan<'a, ControlChannel, TachometerChannel>,
     curve: FanCurve,
+    sensor: Mcp9808<'a, SensorI2C>,
 }
 
-impl<'a, ControlPin, TachometerPin> FanControl<'a, ControlPin, TachometerPin>
+impl<'a, ControlChannel, TachometerChannel, SensorI2C>
+    FanControl<'a, ControlChannel, TachometerChannel, SensorI2C>
 where
-    ControlPin: pwm::Channel,
-    TachometerPin: pwm::Channel,
+    ControlChannel: pwm::Channel,
+    TachometerChannel: pwm::Channel,
+    SensorI2C: i2c::Instance,
 {
-    pub fn new(fan: Fan<'a, ControlPin, TachometerPin>) -> Result<Self> {
+    pub fn new(
+        fan: Fan<'a, ControlChannel, TachometerChannel>,
+        sensor: Mcp9808<'a, SensorI2C>,
+    ) -> Result<Self> {
         Ok(Self {
             fan,
             curve: FanCurve::new()?,
+            sensor,
         })
     }
 
     pub async fn update(&mut self) -> Result<()> {
-        // let sensor_data = self
-        //     .temp_sensor
-        //     .read()
-        //     .await
-        //     .map_err(Error::TemperatureSensorError)?;
-
-        // let fan_power = self
-        //     .curve
-        //     .sample(sensor_data.temperature)
-        //     .map_err(Error::FanCurveError)?;
-
-        // self.fan.set_fan_power(&fan_power);
+        let temp = self.sensor.read_temp().await?;
+        let speed = self.curve.sample(temp)?;
+        self.fan.set_fan_speed(&speed);
         Ok(())
     }
 }
