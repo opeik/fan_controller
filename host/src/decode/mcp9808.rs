@@ -15,13 +15,26 @@ pub enum Error {
     InvalidTemperature(f64),
 }
 
-pub type Temperature = FixedI16<4>;
+#[derive(Debug, PartialEq, Eq, derive_more::Deref, defmt::Format)]
+pub struct Address(pub u16);
+
+#[derive(Debug, PartialEq, Eq, derive_more::Deref, defmt::Format)]
+pub struct ManufacturerId(pub u16);
+
+#[derive(Debug, PartialEq, Eq, derive_more::Deref, defmt::Format)]
+pub struct DeviceId(pub u8);
+
+#[derive(Debug, PartialEq, Eq, derive_more::Deref, defmt::Format)]
+pub struct Revision(pub u8);
+
 pub type TemperaturePayload = BitArray<[u8; 2], Msb0>;
-pub type ManufacturerId = u16;
 pub type ManufacturerIdPayload = BitArray<[u8; 2], Msb0>;
+pub type DeviceIdPayload = BitArray<[u8; 2], Msb0>;
 
 pub mod raw {
     use super::*;
+
+    pub type Temperature = FixedI16<4>;
 
     /// Decodes a MCP9808 temperature payload.
     ///
@@ -40,7 +53,17 @@ pub mod raw {
     ///
     /// See: datasheet § 5.1.4, page 27.
     pub fn decode_manufacturer_id(payload: ManufacturerIdPayload) -> Result<ManufacturerId> {
-        Ok(payload.load_be::<u16>())
+        Ok(ManufacturerId(payload.load_be::<u16>()))
+    }
+
+    /// Decodes a MCP9808 device ID and revision payload.
+    ///
+    /// See: datasheet § 5.1.5, page 28.
+    pub fn decode_device_id(payload: DeviceIdPayload) -> Result<(DeviceId, Revision)> {
+        Ok((
+            DeviceId(payload[0..8].load_be::<u8>()),
+            Revision(payload[8..16].load_be::<u8>()),
+        ))
     }
 }
 
@@ -56,8 +79,13 @@ pub fn decode_temperature(payload: TemperaturePayload) -> Result<ThermodynamicTe
 }
 
 /// Decodes a MCP9808 manufacturer ID payload.
-pub fn decode_manufacturer_id(payload: TemperaturePayload) -> Result<u16> {
+pub fn decode_manufacturer_id(payload: TemperaturePayload) -> Result<ManufacturerId> {
     raw::decode_manufacturer_id(payload)
+}
+
+/// Decodes a MCP9808 device ID payload.
+pub fn decode_device_id(payload: DeviceIdPayload) -> Result<(DeviceId, Revision)> {
+    raw::decode_device_id(payload)
 }
 
 #[cfg(test)]
@@ -65,9 +93,11 @@ mod tests {
     use super::*;
 
     mod temp {
+        use raw::Temperature;
+
         use super::*;
 
-        fn assert_temp_eq(payload: [u8; 2], raw_temp: Temperature) {
+        fn assert_temp_eq(payload: [u8; 2], raw_temp: raw::Temperature) {
             assert_eq!(
                 raw_temp,
                 raw::decode_temperature(TemperaturePayload::from(payload)).unwrap()
