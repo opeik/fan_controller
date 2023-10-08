@@ -38,12 +38,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bitvec",
+ "board",
  "cortex-m",
  "cortex-m-rt",
  "data-encoding",
  "defmt",
  "defmt-rtt",
  "derive_builder",
+ "driver",
  "embassy-embedded-hal",
  "embassy-executor",
  "embassy-futures",
@@ -57,7 +59,6 @@ dependencies = [
  "embedded-storage",
  "enterpolation",
  "fan_controller",
- "futures",
  "heapless",
  "log",
  "panic-probe",
@@ -204,6 +205,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "board"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "driver",
+ "embassy-rp",
+ "thiserror-core",
 ]
 
 [[package]]
@@ -575,6 +586,24 @@ dependencies = [
  "libc",
  "redox_users",
  "winapi",
+]
+
+[[package]]
+name = "driver"
+version = "0.1.0"
+dependencies = [
+ "bitvec",
+ "defmt",
+ "derive_builder",
+ "embassy-futures",
+ "embassy-rp",
+ "embassy-time",
+ "embedded-hal-async",
+ "enterpolation",
+ "fan_controller",
+ "pin-project",
+ "thiserror-core",
+ "uom",
 ]
 
 [[package]]
@@ -1936,28 +1965,17 @@ name = "self_tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cortex-m",
+ "board",
  "data-encoding",
  "defmt",
  "defmt-rtt",
  "defmt-test",
- "embassy-embedded-hal",
- "embassy-executor",
+ "driver",
  "embassy-futures",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embedded-hal 1.0.0-rc.1",
- "embedded-hal-async",
- "embedded-io-async",
- "embedded-storage",
- "heapless",
- "log",
+ "embedded-alloc",
  "panic-probe",
- "pio",
  "reqwest",
  "sha2",
- "static_cell",
  "url",
 ]
 

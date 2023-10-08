@@ -5,6 +5,8 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+board = { path = "../board" }
+driver = { path = "../driver" }
 fan_controller = { path = "../../host" }
 
 uom = { version = "0.35", default-features = false, features = [
@@ -14,7 +16,6 @@ uom = { version = "0.35", default-features = false, features = [
 ] }
 pin-project = "1.1"
 thiserror = { version = "1.0", package = "thiserror-core", default-features = false }
-futures = { version = "0.3", default-features = false }
 bitvec = { version = "1.0", default-features = false, features = ["atomic"] }
 enterpolation = { version = "0.2", default-features = false, features = [
     "libm",

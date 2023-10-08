@@ -41,13 +41,13 @@ fn build_all() -> Result<()> {
 
 fn build_host() -> Result<()> {
     let _p = xshell::pushd(root_dir())?;
-    cmd!("cargo build --workspace").run()?;
+    cmd!("cargo build").run()?;
     Ok(())
 }
 
 fn build_target() -> Result<()> {
     let _p = xshell::pushd(root_dir().join("cross"))?;
-    cmd!("cargo build --release --package app").run()?;
+    cmd!("cargo build --release").run()?;
     Ok(())
 }
 
@@ -59,7 +59,7 @@ fn test_all() -> Result<()> {
 
 fn test_host() -> Result<()> {
     let _p = xshell::pushd(root_dir())?;
-    cmd!("cargo test --workspace").run()?;
+    cmd!("cargo test").run()?;
     Ok(())
 }
 
@@ -77,13 +77,13 @@ fn subcommand_all(args: &[&str]) -> Result<()> {
 
 fn subcommand_host(args: &[&str]) -> Result<()> {
     let _p = xshell::pushd(root_dir())?;
-    cmd!("cargo {args...} --workspace").run()?;
+    cmd!("cargo {args...}").run()?;
     Ok(())
 }
 
 fn subcommand_target(args: &[&str]) -> Result<()> {
     let _p = xshell::pushd(root_dir().join("cross"))?;
-    cmd!("cargo {args...} --workspace").run()?;
+    cmd!("cargo {args...}").run()?;
     Ok(())
 }
 

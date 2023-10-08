@@ -1,20 +1,27 @@
 #![no_std]
 #![no_main]
 
-use {defmt_rtt as _, panic_probe as _};
+use board::Board;
+use defmt_rtt as _;
+use embassy_futures::block_on;
+use embedded_alloc::Heap;
+use panic_probe as _;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
 
 #[defmt_test::tests]
 mod tests {
-    use defmt::assert_eq;
-    use embassy_rp::Peripherals;
+    use super::*;
 
     #[init]
-    fn init() -> Peripherals {
-        embassy_rp::init(Default::default())
+    fn init() -> Board<'static> {
+        board::Board::new().unwrap()
     }
 
     #[test]
-    fn hello(_board: &mut Peripherals) {
-        assert_eq!(1, 1)
+    fn test_manufacturer_id(board: &mut Board<'static>) {
+        let manufacturer_id = block_on(board.sensor.manufacturer_id()).unwrap();
+        assert_eq!(manufacturer_id, 0x54);
     }
 }

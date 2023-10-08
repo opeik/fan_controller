@@ -6,28 +6,18 @@
 
 extern crate alloc;
 
-pub mod driver;
 pub mod fan_control;
 
+use board::Board;
 use defmt::{error, info};
 use defmt_rtt as _;
-use driver::mcp9808::Mcp9808;
+use driver::{Fan, Mcp9808};
 use embassy_executor::Spawner;
-use embassy_rp::{
-    bind_interrupts,
-    config::{self},
-    gpio::{self, Level},
-    i2c, peripherals,
-};
 use embassy_time::{Duration, Timer};
 use embedded_alloc::Heap;
 use panic_probe as _;
 
-use crate::{driver::fan::Fan, fan_control::FanControl};
-
-bind_interrupts!(struct Interrupts {
-    I2C0_IRQ => i2c::InterruptHandler<peripherals::I2C0>;
-});
+use crate::fan_control::FanControl;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -35,35 +25,20 @@ static HEAP: Heap = Heap::empty();
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     initialize_allocator();
-    let peripherals = embassy_rp::init(config::Config::default());
-    let mut led = gpio::Output::new(peripherals.PIN_25, Level::Low);
-    info!("peripherals initialized!");
+    let mut board = Board::new().expect("failed to initialize board");
 
-    let fan = Fan::builder()
-        .control(peripherals.PIN_0, peripherals.PWM_CH0)
-        .tachometer(peripherals.PIN_3, peripherals.PWM_CH1)
-        .build()
-        .unwrap();
-
-    let sensor = Mcp9808::new(
-        peripherals.I2C0,
-        peripherals.PIN_17,
-        peripherals.PIN_16,
-        Interrupts,
-    );
-
-    let mut fan_control = FanControl::builder()
-        .fan(fan)
-        .sensor(sensor)
-        .build()
-        .unwrap();
+    // let mut fan_control = FanControl::builder()
+    //     .fan(fan)
+    //     .sensor(sensor)
+    //     .build()
+    //     .unwrap();
 
     loop {
-        led.toggle();
-        match fan_control.update().await {
-            Ok(()) => info!("fan updated"),
-            Err(e) => error!("error: {}", e),
-        };
+        board.led.toggle();
+        // match fan_control.update().await {
+        //     Ok(()) => info!("fan updated"),
+        //     Err(e) => error!("error: {}", e),
+        // };
         Timer::after(Duration::from_secs(1)).await;
     }
 }

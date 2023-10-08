@@ -12,7 +12,9 @@
         "Gpio",
         "pico",
         "powf",
+        "pushd",
         "repr",
+        "Tacho",
         "ulps",
         "xshell"
     ]

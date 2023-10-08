@@ -1,7 +1,6 @@
+use driver::{self, Fan, Mcp9808};
 use embassy_rp::{i2c, pwm};
 use fan_controller::fan_curve::{self, FanCurve};
-
-use crate::driver::{self, fan::Fan, mcp9808::Mcp9808};
 
 type Result<T> = core::result::Result<T, Error>;
 
@@ -35,7 +34,7 @@ impl<'a, C: pwm::Channel, T: pwm::Channel, S: i2c::Instance> FanControl<'a, C, T
     }
 
     pub async fn update(&mut self) -> Result<()> {
-        let temp = self.sensor.read_temp().await?;
+        let temp = self.sensor.temp().await?;
         let speed = self.curve.sample(temp)?;
         self.fan.set_fan_speed(&speed);
         Ok(())
