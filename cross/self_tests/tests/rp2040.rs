@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(error_in_core)]
 
 use board::Board;
 use defmt_rtt as _;
