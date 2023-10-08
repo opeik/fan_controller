@@ -19,33 +19,19 @@ pub enum Error {
     FanCurveError(#[from] fan_curve::Error),
 }
 
-pub struct FanControl<'a, ControlChannel, TachometerChannel, SensorI2C>
-where
-    ControlChannel: pwm::Channel,
-    TachometerChannel: pwm::Channel,
-    SensorI2C: i2c::Instance,
-{
-    fan: Fan<'a, ControlChannel, TachometerChannel>,
+#[derive(derive_builder::Builder)]
+#[builder(no_std, pattern = "owned")]
+pub struct FanControl<'a, C: pwm::Channel, T: pwm::Channel, S: i2c::Instance> {
+    fan: Fan<'a, C, T>,
+    sensor: Mcp9808<'a, S>,
+    #[builder(default)]
     curve: FanCurve,
-    sensor: Mcp9808<'a, SensorI2C>,
 }
 
-impl<'a, ControlChannel, TachometerChannel, SensorI2C>
-    FanControl<'a, ControlChannel, TachometerChannel, SensorI2C>
-where
-    ControlChannel: pwm::Channel,
-    TachometerChannel: pwm::Channel,
-    SensorI2C: i2c::Instance,
-{
-    pub fn new(
-        fan: Fan<'a, ControlChannel, TachometerChannel>,
-        sensor: Mcp9808<'a, SensorI2C>,
-    ) -> Result<Self> {
-        Ok(Self {
-            fan,
-            curve: FanCurve::new()?,
-            sensor,
-        })
+impl<'a, C: pwm::Channel, T: pwm::Channel, S: i2c::Instance> FanControl<'a, C, T, S> {
+    #[must_use]
+    pub fn builder() -> FanControlBuilder<'a, C, T, S> {
+        FanControlBuilder::default()
     }
 
     pub async fn update(&mut self) -> Result<()> {

@@ -25,11 +25,11 @@ pub enum Error {
     HeaplessError,
 }
 
-const CURVE_SIZE: usize = 2;
+const MAX_CURVE_SIZE: usize = 2;
 type T = f64;
-type Knots = Sorted<[T; CURVE_SIZE]>;
-type Elements = [T; CURVE_SIZE];
-type Space = ConstSpace<T, CURVE_SIZE>;
+type Knots = Sorted<[T; MAX_CURVE_SIZE]>;
+type Elements = [T; MAX_CURVE_SIZE];
+type Space = ConstSpace<T, MAX_CURVE_SIZE>;
 
 pub struct FanCurve(Clamp<BSpline<Knots, Elements, Space>>);
 
@@ -40,14 +40,14 @@ impl FanCurve {
         let curve = BSpline::builder()
             .elements(fan_speeds.into_array().map_err(|_| Error::HeaplessError)?)
             .knots(temps.into_array().map_err(|_| Error::HeaplessError)?)
-            .constant::<CURVE_SIZE>()
+            .constant::<MAX_CURVE_SIZE>()
             .build()
             .map_err(Error::SplineError)?
             .clamp();
         Ok(Self(curve))
     }
 
-    fn default_curve() -> Result<Vec<(ThermodynamicTemperature, fan::Speed), CURVE_SIZE>> {
+    fn default_curve() -> Result<Vec<(ThermodynamicTemperature, fan::Speed), MAX_CURVE_SIZE>> {
         [(20.0, 30.0), (65.0, 100.0)]
             .into_iter()
             .map(|(temp, fan_speed)| {
@@ -56,10 +56,10 @@ impl FanCurve {
                     fan::Speed::new(Ratio::new::<percent>(fan_speed))?,
                 ))
             })
-            .collect::<Result<Vec<_, CURVE_SIZE>>>()
+            .collect::<Result<Vec<_, MAX_CURVE_SIZE>>>()
     }
 
-    fn unzip_curve<T>(collection: T) -> (Vec<f64, CURVE_SIZE>, Vec<f64, CURVE_SIZE>)
+    fn unzip_curve<T>(collection: T) -> (Vec<f64, MAX_CURVE_SIZE>, Vec<f64, MAX_CURVE_SIZE>)
     where
         T: IntoIterator<Item = (ThermodynamicTemperature, fan::Speed)>,
     {
@@ -73,6 +73,12 @@ impl FanCurve {
         Ok(fan::Speed::new(Ratio::new::<percent>(
             self.0.gen(temp.get::<degree_celsius>()),
         ))?)
+    }
+}
+
+impl Default for FanCurve {
+    fn default() -> Self {
+        Self::new().unwrap()
     }
 }
 

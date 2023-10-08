@@ -21,6 +21,9 @@ enterpolation = { version = "0.2", default-features = false, features = [
     "bspline",
 ] }
 
+embedded-alloc = "0.5"
+derive_builder = { version = "0.12", default-features = false }
+
 # Embassy-related dependencies.
 embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", features = [
     "defmt",

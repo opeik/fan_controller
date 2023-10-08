@@ -28,7 +28,10 @@ enum Register {
     // Resolution = 0x08,
 }
 
+#[derive(derive_builder::Builder)]
+#[builder(no_std, pattern = "owned")]
 pub struct Mcp9808<'a, T: i2c::Instance> {
+    #[builder(setter(custom))]
     i2c: i2c::I2c<'a, T, i2c::Async>,
 }
 
@@ -49,6 +52,7 @@ impl<'a, T: i2c::Instance> Mcp9808<'a, T> {
 
     pub async fn read_temp(&mut self) -> Result<ThermodynamicTemperature> {
         let mut payload = TemperaturePayload::ZERO;
+
         self.i2c
             .write_async(Self::DEFAULT_ADDRESS, [Register::Temperature as u8])
             .await?;
@@ -59,6 +63,26 @@ impl<'a, T: i2c::Instance> Mcp9808<'a, T> {
         match decode::mcp9808::decode(Payload::Temperature(payload))? {
             Data::Temperature(v) => Ok(v),
         }
+    }
+}
+
+impl<'a, T: i2c::Instance> Mcp9808Builder<'a, T> {
+    #[must_use]
+    pub fn i2c(
+        mut self,
+        peripheral: impl Peripheral<P = T> + 'a,
+        scl_pin: impl Peripheral<P = impl i2c::SclPin<T>> + 'a,
+        sda_pin: impl Peripheral<P = impl i2c::SdaPin<T>> + 'a,
+        irq: impl Binding<T::Interrupt, i2c::InterruptHandler<T>>,
+    ) -> Self {
+        self.i2c = Some(i2c::I2c::new_async(
+            peripheral,
+            scl_pin,
+            sda_pin,
+            irq,
+            i2c::Config::default(),
+        ));
+        self
     }
 }
 

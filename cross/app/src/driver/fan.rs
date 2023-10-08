@@ -25,33 +25,19 @@ pub enum Error {
     DecodeError(#[from] decode::fan::Error),
 }
 
-pub struct Fan<'a, ControlPwmChannel: pwm::Channel, TachometerPwmChannel: pwm::Channel> {
-    control: pwm::Pwm<'a, ControlPwmChannel>,
-    tachometer: pwm::Pwm<'a, TachometerPwmChannel>,
+#[derive(derive_builder::Builder)]
+#[builder(no_std, pattern = "owned")]
+pub struct Fan<'a, C: pwm::Channel, T: pwm::Channel> {
+    #[builder(setter(custom))]
+    control: pwm::Pwm<'a, C>,
+    #[builder(setter(custom))]
+    tachometer: pwm::Pwm<'a, T>,
 }
 
-impl<'a, ControlPwmChannel: pwm::Channel, TachometerPwmChannel: pwm::Channel>
-    Fan<'a, ControlPwmChannel, TachometerPwmChannel>
-{
-    pub fn new(
-        control_channel: impl Peripheral<P = ControlPwmChannel> + 'a,
-        control_pin: impl Peripheral<P = impl pwm::PwmPinA<ControlPwmChannel>> + 'a,
-        tachometer_channel: impl Peripheral<P = TachometerPwmChannel> + 'a,
-        tachometer_pin: impl Peripheral<P = impl pwm::PwmPinB<TachometerPwmChannel>> + 'a,
-    ) -> Self {
-        let control = pwm::Pwm::new_output_a(control_channel, control_pin, pwm::Config::default());
-
-        let tachometer = pwm::Pwm::new_input(
-            tachometer_channel,
-            tachometer_pin,
-            pwm::InputMode::FallingEdge,
-            pwm::Config::default(),
-        );
-
-        Self {
-            control,
-            tachometer,
-        }
+impl<'a, C: pwm::Channel, T: pwm::Channel> Fan<'a, C, T> {
+    #[must_use]
+    pub fn builder() -> FanBuilder<'a, C, T> {
+        FanBuilder::default()
     }
 
     pub fn set_fan_speed(&mut self, speed: &Speed) {
@@ -83,5 +69,32 @@ impl<'a, ControlPwmChannel: pwm::Channel, TachometerPwmChannel: pwm::Channel>
 
         let frequency = 1.0 / (sample_duration / f64::from(pulse_count));
         Ok(frequency)
+    }
+}
+
+impl<'a, C: pwm::Channel, T: pwm::Channel> FanBuilder<'a, C, T> {
+    #[must_use]
+    pub fn control(
+        mut self,
+        pin: impl Peripheral<P = impl pwm::PwmPinA<C>> + 'a,
+        channel: impl Peripheral<P = C> + 'a,
+    ) -> Self {
+        self.control = Some(pwm::Pwm::new_output_a(channel, pin, pwm::Config::default()));
+        self
+    }
+
+    #[must_use]
+    pub fn tachometer(
+        mut self,
+        pin: impl Peripheral<P = impl pwm::PwmPinB<T>> + 'a,
+        channel: impl Peripheral<P = T> + 'a,
+    ) -> Self {
+        self.tachometer = Some(pwm::Pwm::new_input(
+            channel,
+            pin,
+            pwm::InputMode::FallingEdge,
+            pwm::Config::default(),
+        ));
+        self
     }
 }
