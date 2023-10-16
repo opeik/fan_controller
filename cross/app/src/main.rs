@@ -35,6 +35,7 @@ async fn main(_spawner: Spawner) {
 
     loop {
         board.led.toggle();
+        info!("hi");
         // match fan_control.update().await {
         //     Ok(()) => info!("fan updated"),
         //     Err(e) => error!("error: {}", e),

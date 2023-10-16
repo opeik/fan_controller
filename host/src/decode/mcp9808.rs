@@ -91,48 +91,79 @@ pub fn decode_device_id(payload: DeviceIdPayload) -> Result<(DeviceId, Revision)
 #[cfg(test)]
 mod tests {
     use super::*;
-
     mod temp {
-        use raw::Temperature;
-
         use super::*;
+        use crate::decode::mcp9808::{decode_temperature, TemperaturePayload};
 
-        fn assert_temp_eq(payload: [u8; 2], raw_temp: raw::Temperature) {
-            assert_eq!(
-                raw_temp,
-                raw::decode_temperature(TemperaturePayload::from(payload)).unwrap()
-            );
+        #[test]
+        fn valid_range() {
+            let temp = decode_temperature(TemperaturePayload::from([0x0, 0x0])).unwrap();
+            assert_eq!(temp, ThermodynamicTemperature::new::<degree_celsius>(0.0));
         }
 
         #[test]
-        fn zero_celsius() {
-            assert_temp_eq([0b0000_0000, 0b0000_0000], Temperature::from_num(0.0));
+        fn invalid_range() {
+            let temp = decode_temperature(TemperaturePayload::from([0x0, 0x0]));
+            assert!(temp.is_err());
         }
 
-        #[test]
-        fn slightly_above_zero_celsius() {
-            assert_temp_eq([0b0000_0000, 0b0000_0001], Temperature::from_num(0.062));
-            assert_temp_eq([0b0000_0000, 0b0000_0010], Temperature::from_num(0.125));
-            assert_temp_eq([0b0000_0000, 0b0000_1000], Temperature::from_num(0.500));
-            assert_temp_eq([0b0000_0000, 0b0000_1010], Temperature::from_num(0.625));
-        }
+        mod raw {
+            use crate::decode::mcp9808::{
+                raw::{self, Temperature},
+                TemperaturePayload,
+            };
 
-        #[test]
-        fn slightly_below_zero_celsius() {
-            assert_temp_eq([0b0001_0000, 0b0000_0001], Temperature::from_num(-0.062));
-            assert_temp_eq([0b0001_0000, 0b0000_0010], Temperature::from_num(-0.125));
-            assert_temp_eq([0b0001_0000, 0b0000_1000], Temperature::from_num(-0.500));
-            assert_temp_eq([0b0001_0000, 0b0000_1010], Temperature::from_num(-0.625));
-        }
+            fn assert_temp_eq(payload: [u8; 2], raw_temp: Temperature) {
+                assert_eq!(
+                    raw_temp,
+                    raw::decode_temperature(TemperaturePayload::from(payload)).unwrap()
+                );
+            }
 
-        #[test]
-        fn above_zero_celsius() {
-            assert_temp_eq([0b0000_0001, 0b1001_0100], Temperature::from_num(25.250));
-        }
+            #[test]
+            fn zero_celsius() {
+                assert_temp_eq([0b0000_0000, 0b0000_0000], Temperature::from_num(0.0));
+            }
 
-        #[test]
-        fn below_zero_celsius() {
-            assert_temp_eq([0b0001_0001, 0b1001_0100], Temperature::from_num(-25.250));
+            #[test]
+            fn slightly_above_zero_celsius() {
+                assert_temp_eq([0b0000_0000, 0b0000_0001], Temperature::from_num(0.062));
+                assert_temp_eq([0b0000_0000, 0b0000_0010], Temperature::from_num(0.125));
+                assert_temp_eq([0b0000_0000, 0b0000_1000], Temperature::from_num(0.500));
+                assert_temp_eq([0b0000_0000, 0b0000_1010], Temperature::from_num(0.625));
+            }
+
+            #[test]
+            fn slightly_below_zero_celsius() {
+                assert_temp_eq([0b0001_0000, 0b0000_0001], Temperature::from_num(-0.062));
+                assert_temp_eq([0b0001_0000, 0b0000_0010], Temperature::from_num(-0.125));
+                assert_temp_eq([0b0001_0000, 0b0000_1000], Temperature::from_num(-0.500));
+                assert_temp_eq([0b0001_0000, 0b0000_1010], Temperature::from_num(-0.625));
+            }
+
+            #[test]
+            fn above_zero_celsius() {
+                assert_temp_eq([0b0000_0001, 0b1001_0100], Temperature::from_num(25.250));
+            }
+
+            #[test]
+            fn below_zero_celsius() {
+                assert_temp_eq([0b0001_0001, 0b1001_0100], Temperature::from_num(-25.250));
+            }
+        }
+    }
+
+    mod manufacturer_id {
+        mod raw {
+            use crate::decode::mcp9808::{raw, DeviceId, DeviceIdPayload, Revision};
+
+            #[test]
+            fn standard() {
+                let (device_id, revision) =
+                    raw::decode_device_id(DeviceIdPayload::from([0x54, 0x0])).unwrap();
+                assert_eq!(device_id, DeviceId(0x54));
+                assert_eq!(revision, Revision(0x0));
+            }
         }
     }
 }
