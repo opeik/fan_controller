@@ -26,12 +26,11 @@ static HEAP: Heap = Heap::empty();
 async fn main(_spawner: Spawner) {
     initialize_allocator();
     let mut board = Board::new().expect("failed to initialize board");
-
-    // let mut fan_control = FanControl::builder()
-    //     .fan(fan)
-    //     .sensor(sensor)
-    //     .build()
-    //     .unwrap();
+    let mut fan_control = FanControl::builder()
+        .fan(board.fan_1)
+        .sensor(board.sensor)
+        .build()
+        .unwrap();
 
     loop {
         board.led.toggle();
