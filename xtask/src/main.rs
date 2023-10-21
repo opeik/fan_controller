@@ -41,12 +41,14 @@ fn build_all() -> Result<()> {
 
 fn build_host() -> Result<()> {
     let _p = xshell::pushd(root_dir())?;
+    println!("building host...");
     cmd!("cargo build").run()?;
     Ok(())
 }
 
 fn build_target() -> Result<()> {
     let _p = xshell::pushd(root_dir().join("cross"))?;
+    println!("building target...");
     cmd!("cargo build --release").run()?;
     Ok(())
 }
@@ -59,12 +61,14 @@ fn test_all() -> Result<()> {
 
 fn test_host() -> Result<()> {
     let _p = xshell::pushd(root_dir())?;
+    println!("testing host...");
     cmd!("cargo test").run()?;
     Ok(())
 }
 
 fn test_target() -> Result<()> {
     let _p = xshell::pushd(root_dir().join("cross"))?;
+    println!("testing target...");
     cmd!("cargo test --package self_tests").run()?;
     Ok(())
 }

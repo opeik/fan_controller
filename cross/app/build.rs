@@ -13,10 +13,14 @@ use std::{env, path::PathBuf};
 use anyhow::{Context, Result};
 
 fn main() -> Result<()> {
-    // Put `memory.x` in our output directory and ensure it's
-    // on the linker search path.
-    let memory_x_path = PathBuf::from(env::var_os("MEMORY_X").context("missing memory.x path")?);
-    println!("cargo:rustc-link-search={}", memory_x_path.display());
+    // Put `memory.x` linker script in our output directory and ensure it's in the linker search path.
+    let rp_pico_linker_script_path =
+        PathBuf::from(env::var_os("RP_PICO_LINKER_SCRIPT").context("unset linker script path")?);
+
+    println!(
+        "cargo:rustc-link-search={}",
+        rp_pico_linker_script_path.display()
+    );
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`

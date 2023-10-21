@@ -1,5 +1,4 @@
 use defmt::info;
-use derive_builder::UninitializedFieldError;
 use embassy_rp::{
     clocks,
     pwm::{self},

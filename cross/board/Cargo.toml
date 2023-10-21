@@ -3,6 +3,18 @@ edition = "2021"
 name = "board"
 version = "0.1.0"
 
+[features]
+default = ["wifi", "defmt-trace"]
+wifi = ["dep:cyw43", "dep:cyw43-pio"]
+
+# these features are required by defmt
+defmt-default = []
+defmt-trace = []
+defmt-debug = []
+defmt-info = []
+defmt-warn = []
+defmt-error = []
+
 [lib]
 bench = false
 doctest = false
@@ -11,6 +23,9 @@ test = false
 [dependencies]
 driver = { path = "../driver" }
 thiserror = { version = "1.0", package = "thiserror-core", default-features = false }
+defmt = "0.3"
+
+# Embassy-related dependencies
 embassy-rp = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.git", features = [
     "defmt",
     "unstable-traits",
@@ -19,14 +34,12 @@ embassy-rp = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy.g
     "time-driver",
     "critical-section-impl",
 ] }
-defmt = "0.3"
 
-[features]
-default = ['defmt-trace']
-# these features are required by defmt
-defmt-default = []
-defmt-trace = []
-defmt-debug = []
-defmt-info = []
-defmt-warn = []
-defmt-error = []
+cyw43 = { optional = true, git = "https://github.com/embassy-rs/embassy.git", features = [
+    "defmt",
+    "firmware-logs",
+] }
+cyw43-pio = { optional = true, git = "https://github.com/embassy-rs/embassy.git", features = [
+    "defmt",
+    "overclock",
+] }

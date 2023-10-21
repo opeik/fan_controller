@@ -18,31 +18,43 @@
           overlays = [(import rust-overlay)];
         };
 
-        memory_x = pkgs.writeTextFile {
-          name = "memory.x";
-          destination = "/memory.x";
-          text = ''
-            MEMORY {
-              BOOT2 : ORIGIN = 0x10000000, LENGTH = 0x100
-              FLASH : ORIGIN = 0x10000100, LENGTH = 2048K - 0x100
-              RAM   : ORIGIN = 0x20000000, LENGTH = 256K
-            }
-          '';
+        rp_pico = {
+          # Raspberry Pi Pico linker script.
+          # See: https://docs.rust-embedded.org/cortex-m-quickstart/cortex_m_rt/index.html#memoryx
+          linker_script = pkgs.writeTextFile {
+            name = "memory.x";
+            destination = "/memory.x";
+            text = ''
+              MEMORY {
+                BOOT2 : ORIGIN = 0x10000000, LENGTH = 0x100
+                FLASH : ORIGIN = 0x10000100, LENGTH = 2048K - 0x100
+                RAM   : ORIGIN = 0x20000000, LENGTH = 256K
+              }
+            '';
+          };
+
+          # Raspberry Pi Pico system view description file.
+          # See: https://www.keil.com/pack/doc/CMSIS/SVD/html/index.html
+          svd = builtins.fetchurl {
+            url = "https://github.com/raspberrypi/pico-sdk/raw/master/src/rp2040/hardware_regs/rp2040.svd";
+            sha256 = "1j16yqwcabrll2jgxfmbq6g3040xsf5b7971mmhcc1wgh016412s";
+          };
         };
 
-        pico_w_firmware = builtins.fetchurl {
-          url = "https://github.com/embassy-rs/embassy/raw/main/cyw43-firmware/43439A0.bin";
-          sha256 = "0sy91m0anbm8r6xv6q2ba64qj8anhv2bm2jl3msc7iyvg0sf402c";
-        };
+        rp_pico_w = {
+          # Raspberry Pi Pico W firmware.
+          # See: https://github.com/Infineon/wifi-host-driver/tree/master
+          firmware = builtins.fetchurl {
+            url = "https://github.com/Infineon/wifi-host-driver/blob/master/WiFi_Host_Driver/resources/firmware/COMPONENT_43439/43439a0.bin";
+            sha256 = "15fd6hlb8j7wyya320as85cqcnkr4sjigz5n0szkdm1asgbnjdwr";
+          };
 
-        pico_w_firmware_clm = builtins.fetchurl {
-          url = "https://github.com/embassy-rs/embassy/raw/main/cyw43-firmware/43439A0_clm.bin";
-          sha256 = "09g2q9svqfa7ilpcyhb35iz8xaadykl61gwyrji5d9azqz2ihk0i";
-        };
-
-        pico_svd = builtins.fetchurl {
-          url = "https://github.com/raspberrypi/pico-sdk/raw/master/src/rp2040/hardware_regs/rp2040.svd";
-          sha256 = "1j16yqwcabrll2jgxfmbq6g3040xsf5b7971mmhcc1wgh016412s";
+          # Raspberry Pi Pico W country locale matrix.
+          # See: https://github.com/Infineon/wifi-host-driver/tree/master
+          clm = builtins.fetchurl {
+            url = "https://github.com/Infineon/wifi-host-driver/blob/master/WiFi_Host_Driver/resources/clm/COMPONENT_43439/43439A0.clm_blob";
+            sha256 = "0v43xqq3fx4ad2v4n91g9zqh6hinm3gqn1n3c1yq3nlsl4ykmyqc";
+          };
         };
 
         tools = {
@@ -58,6 +70,7 @@
               probe-run
               probe-rs
               elf2uf2-rs
+              cargo-udeps
             ]
             ++ lib.optionals stdenv.isDarwin
             (with darwin.apple_sdk.frameworks; [Security]);
@@ -69,10 +82,10 @@
         # Development shell: `nix develop`
         devShell = pkgs.mkShell {
           packages = tools.nix ++ tools.rust;
-          MEMORY_X = memory_x;
-          PICO_W_FIRMWARE = pico_w_firmware;
-          PICO_W_FIRMWARE_CLM = pico_w_firmware_clm;
-          PICO_SVD = pico_svd;
+          RP_PICO_SVD = rp_pico.svd;
+          RP_PICO_LINKER_SCRIPT = rp_pico.linker_script;
+          RP_PICO_W_FIRMWARE = rp_pico_w.firmware;
+          RP_PICO_W_CLM = rp_pico_w.clm;
         };
       }
     );

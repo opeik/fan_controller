@@ -103,7 +103,7 @@ mod tests {
 
         #[test]
         fn invalid_range() {
-            let temp = decode_temperature(TemperaturePayload::from([0x0, 0x0]));
+            let temp = decode_temperature(TemperaturePayload::from([0x1F, 0xF0]));
             assert!(temp.is_err());
         }
 
