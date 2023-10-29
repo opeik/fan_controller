@@ -170,6 +170,7 @@ dependencies = [
  "defmt",
  "driver",
  "embassy-rp",
+ "static_cell",
  "thiserror-core",
 ]
 

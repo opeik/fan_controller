@@ -44,32 +44,22 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "wifi")]
     {
         use defmt::unwrap;
-        let fw = include_bytes!(env!("RP_PICO_W_FIRMWARE"));
-        let clm = include_bytes!(env!("RP_PICO_W_CLM"));
-        let state = make_static!(cyw43::State::new());
-        let (_net_device, mut control, runner) =
-            cyw43::new(state, board.wifi_pwr, board.wifi_spi, fw).await;
         unwrap!(spawner.spawn(wifi_task(runner)));
-
-        control.init(clm).await;
-        control
-            .set_power_management(cyw43::PowerManagementMode::PowerSave)
-            .await;
     }
 
-    // let mut fan_1_control = FanControl::builder()
-    //     .fan(board.fan_1)
-    //     .sensor(board.sensor)
-    //     .build()
-    //     .unwrap();
+    let mut fan_1_control = FanControl::builder()
+        .fan(board.fan_1)
+        .sensor(board.sensor)
+        .build()
+        .unwrap();
 
     loop {
         // board.led.toggle();
         info!("hi");
-        // match fan_1_control.update().await {
-        //     Ok(()) => info!("fan updated"),
-        //     Err(e) => error!("error: {}", e),
-        // };
+        match fan_1_control.update().await {
+            Ok(()) => info!("fan updated"),
+            Err(e) => error!("error: {}", e),
+        };
         Timer::after(Duration::from_secs(1)).await;
     }
 }

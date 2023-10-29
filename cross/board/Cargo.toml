@@ -4,8 +4,8 @@ name = "board"
 version = "0.1.0"
 
 [features]
-default = ["wifi", "defmt-trace"]
-wifi = ["dep:cyw43", "dep:cyw43-pio"]
+default = ["defmt-trace"]
+wifi = ["dep:cyw43", "dep:cyw43-pio", "dep:static_cell"]
 
 # these features are required by defmt
 defmt-default = []
@@ -43,3 +43,5 @@ cyw43-pio = { optional = true, git = "https://github.com/embassy-rs/embassy.git"
     "defmt",
     "overclock",
 ] }
+
+static_cell = { optional = true, version = "1.1", features = ["nightly"] }

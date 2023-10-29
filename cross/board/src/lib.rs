@@ -7,8 +7,9 @@ use defmt::info;
 use driver::{fan::Fan, Mcp9808};
 use embassy_rp::{
     bind_interrupts, config,
-    gpio::{self, Level},
-    i2c, peripherals,
+    gpio::{self, Level, Output},
+    i2c,
+    peripherals::{self, DMA_CH0, PIN_23, PIN_25, PIO0},
 };
 
 type Result<T> = core::result::Result<T, Error>;
@@ -32,22 +33,37 @@ use cyw43_pio::PioSpi;
 
 #[cfg(feature = "wifi")]
 pub struct Board<'a> {
+    pub wifi_runner: cyw43::Runner<'a, Output<'a, PIN_23>, PioSpi<'a, PIN_25, PIO0, 0, DMA_CH0>>,
+    pub wifi_control: cyw43::Control<'a>,
     pub sensor: Mcp9808<'a, Sensor>,
-    pub wifi_spi: PioSpi<'a, peripherals::PIN_25, peripherals::PIO0, 0, peripherals::DMA_CH0>,
-    pub wifi_pwr: gpio::Output<'a, peripherals::PIN_23>,
+    pub fan_1: Fan<'a, Fan1Control>,
+    pub fan_2: Fan<'a, Fan2Control>,
+    pub fan_3: Fan<'a, Fan3Control>,
+    pub fan_4: Fan<'a, Fan4Control>,
 }
 
 #[cfg(not(feature = "wifi"))]
 pub struct Board<'a> {
     pub sensor: Mcp9808<'a, Sensor>,
-    pub led: gpio::Output<'a, peripherals::PIN_25>,
-    // pub fan_1: Fan<'a, Fan1Control>,
+    pub fan_1: Fan<'a, Fan1Control>,
+    pub fan_2: Fan<'a, Fan2Control>,
+    pub fan_3: Fan<'a, Fan3Control>,
+    pub fan_4: Fan<'a, Fan4Control>,
 }
+
+#[cfg(not(feature = "wifi"))]
+pub struct Led {
+    inner: gpio::Output<'a, peripherals::PIN_25>,
+}
+
+#[cfg(feature = "wifi")]
+pub struct Led {}
 
 impl<'a> Board<'a> {
     #[cfg(feature = "wifi")]
-    pub fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         use embassy_rp::pio::{self, Pio};
+        use static_cell::make_static;
 
         bind_interrupts!(struct SensorInterrupts {
             I2C0_IRQ => i2c::InterruptHandler<peripherals::I2C0>;
@@ -58,9 +74,6 @@ impl<'a> Board<'a> {
         });
 
         let p = embassy_rp::init(config::Config::default());
-
-        // Setup sensors.
-        let sensor = Mcp9808::new(p.I2C0, p.PIN_17, p.PIN_16, SensorInterrupts);
 
         // Setup wifi.
         let pwr = gpio::Output::new(p.PIN_23, Level::Low);
@@ -76,11 +89,30 @@ impl<'a> Board<'a> {
             p.DMA_CH0,
         );
 
+        let fw = include_bytes!(env!("RP_PICO_W_FIRMWARE"));
+        let clm = include_bytes!(env!("RP_PICO_W_CLM"));
+        let state = make_static!(cyw43::State::new());
+        let (_net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+        control.init(clm).await;
+        control
+            .set_power_management(cyw43::PowerManagementMode::PowerSave)
+            .await;
+
+        let sensor = Mcp9808::new(p.I2C0, p.PIN_17, p.PIN_16, SensorInterrupts);
+        let fan_1 = Fan::new(p.PWM_CH0, p.PIN_0, p.PIN_1);
+        let fan_2 = Fan::new(p.PWM_CH2, p.PIN_4, p.PIN_5);
+        let fan_3 = Fan::new(p.PWM_CH4, p.PIN_8, p.PIN_9);
+        let fan_4 = Fan::new(p.PWM_CH6, p.PIN_12, p.PIN_13);
         info!("board initialized!");
+
         Ok(Self {
+            wifi_runner: runner,
+            wifi_control: control,
             sensor,
-            wifi_spi: spi,
-            wifi_pwr: pwr,
+            fan_1,
+            fan_2,
+            fan_3,
+            fan_4,
         })
     }
 
@@ -92,14 +124,21 @@ impl<'a> Board<'a> {
 
         let p = embassy_rp::init(config::Config::default());
         let led = gpio::Output::new(p.PIN_25, Level::Low);
-        // let fan_1 = Fan::new(peripherals.PWM_CH0, peripherals.PIN_0, peripherals.PIN_1);
-        // let fan_2 = Fan::new(peripherals.PWM_CH2, peripherals.PIN_4, peripherals.PIN_5);
-        // let fan_3 = Fan::new(peripherals.PWM_CH4, peripherals.PIN_8, peripherals.PIN_9);
-        // let fan_4 = Fan::new(peripherals.PWM_CH6, peripherals.PIN_12, peripherals.PIN_13);
+        let fan_1 = Fan::new(p.PWM_CH0, p.PIN_0, p.PIN_1);
+        let fan_2 = Fan::new(p.PWM_CH2, p.PIN_4, p.PIN_5);
+        let fan_3 = Fan::new(p.PWM_CH4, p.PIN_8, p.PIN_9);
+        let fan_4 = Fan::new(p.PWM_CH6, p.PIN_12, p.PIN_13);
 
         let sensor = Mcp9808::new(p.I2C0, p.PIN_17, p.PIN_16, Interrupts);
         info!("board initialized!");
 
-        Ok(Self { sensor, led })
+        Ok(Self {
+            sensor,
+            led,
+            fan_1,
+            fan_2,
+            fan_3,
+            fan_4,
+        })
     }
 }

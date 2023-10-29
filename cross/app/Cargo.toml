@@ -5,8 +5,8 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["wifi", "defmt-trace"]
-wifi = ["dep:cyw43", "dep:cyw43-pio"]
+default = ["defmt-trace", "wifi"]
+wifi = ["dep:cyw43", "dep:cyw43-pio", "dep:pio-proc", "dep:futures"]
 
 # these features are required by defmt
 defmt-default = []
@@ -17,7 +17,7 @@ defmt-warn = []
 defmt-error = []
 
 [dependencies]
-board = { path = "../board" }
+board = { path = "../board", features = ["wifi"] }
 driver = { path = "../driver" }
 fan_controller = { path = "../../host" }
 
@@ -91,7 +91,7 @@ fixed = "1.23.1"
 cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-futures = { version = "0.3.17", default-features = false, features = [
+futures = { optional = true, version = "0.3.17", default-features = false, features = [
     "async-await",
     "cfg-target-has-atomic",
     "unstable",
@@ -103,7 +103,7 @@ embedded-hal-async = "1.0.0-rc.1"
 embedded-io-async = { version = "0.6.0", features = ["defmt-03"] }
 embedded-storage = { version = "0.3" }
 static_cell = { version = "1.1", features = ["nightly"] }
-pio-proc = "0.2"
+pio-proc = { optional = true, version = "0.2" }
 pio = "0.2.1"
 
 [build-dependencies]
